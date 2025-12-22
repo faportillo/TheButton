@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "the-button"
+version = "0.1.0"
+description = "Blank Python project managed by Poetry"
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+packages = [{ include = "the_button", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "~3.13"
+
+[build-system]
+requires = ["poetry-core>=1.9.0"]
+build-backend = "poetry.core.masonry.api"
+
+
