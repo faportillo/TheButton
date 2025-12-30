@@ -4,14 +4,17 @@
 # Run `make help` to see all available targets
 # =============================================================================
 
-.PHONY: help test test-unit test-integration test-contract test-api test-reducer \
+.PHONY: help start stop restart status logs \
+        test test-unit test-integration test-contract test-api test-reducer \
         test-coverage test-verbose test-failed test-watch lint format clean \
-        install dev-install docker-up docker-down
+        install dev-install docker-up docker-down \
+        db-migrate db-upgrade db-downgrade db-current db-history db-heads
 
 # Default Python and Poetry commands
 PYTHON := poetry run python
 PYTEST := poetry run pytest
 BLACK := poetry run black
+ALEMBIC := poetry run alembic
 
 # Test directories
 TEST_DIR := tests
@@ -20,6 +23,31 @@ API_INTEGRATION_TESTS := tests/api/integration
 API_CONTRACT_TESTS := tests/api/contract
 REDUCER_UNIT_TESTS := tests/reducer/unit
 REDUCER_INTEGRATION_TESTS := tests/reducer/integration
+
+# =============================================================================
+# Quick Start
+# =============================================================================
+
+start: ## Start all services (Docker + migrations)
+	@echo "Starting TheButton..."
+	@docker compose up -d postgres redis kafka
+	@echo "Waiting for services to be healthy..."
+	@sleep 3
+	@$(ALEMBIC) upgrade head
+	@echo "✓ All services running. Database migrated."
+
+stop: ## Stop all services
+	@echo "Stopping TheButton..."
+	@docker compose --profile tools down
+	@echo "✓ All services stopped."
+
+restart: stop start ## Restart all services
+
+status: ## Show service status
+	@docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+
+logs: ## Follow logs for all services
+	@docker compose logs -f
 
 # =============================================================================
 # Help
@@ -204,15 +232,53 @@ docker-health: ## Check health of all services
 	@docker compose ps --format "table {{.Name}}\t{{.Status}}"
 
 # =============================================================================
+# Database Migrations (Alembic)
+# =============================================================================
+
+db-migrate: ## Create a new migration (use MSG="description")
+	$(ALEMBIC) revision --autogenerate -m "$(MSG)"
+
+db-upgrade: ## Apply all pending migrations
+	$(ALEMBIC) upgrade head
+
+db-downgrade: ## Rollback the last migration
+	$(ALEMBIC) downgrade -1
+
+db-current: ## Show current migration revision
+	$(ALEMBIC) current
+
+db-history: ## Show migration history
+	$(ALEMBIC) history --verbose
+
+db-heads: ## Show current head revisions
+	$(ALEMBIC) heads
+
+db-stamp: ## Stamp the database with a revision without running migrations (use REV="revision")
+	$(ALEMBIC) stamp $(REV)
+
+db-reset: ## Reset database to clean state (WARNING: destroys data)
+	$(ALEMBIC) downgrade base
+
+# =============================================================================
 # Quick Reference
 # =============================================================================
 
-# Examples:
+# Quick Start:
+#   make start                   - Start everything (Docker + migrations)
+#   make stop                    - Stop all services
+#   make restart                 - Restart everything
+#   make status                  - Show service status
+#   make logs                    - Follow all logs
+#
+# Testing:
 #   make test                    - Run all tests
 #   make test-unit               - Run only unit tests
 #   make test-integration        - Run only integration tests
-#   make test-contract           - Run only contract tests
 #   make test-match PATTERN="health"  - Run tests with "health" in name
-#   make test-file FILE="tests/api/unit/test_kafka.py"  - Run specific file
 #   make test-coverage           - Run with coverage report
+#
+# Database:
+#   make db-migrate MSG="add users table"  - Create a new migration
+#   make db-upgrade              - Apply all pending migrations
+#   make db-downgrade            - Rollback last migration
 
