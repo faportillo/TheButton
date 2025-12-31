@@ -7,8 +7,12 @@ multiple API instances. Includes:
 - Real IP extraction from proxy headers
 - IP blocklist for known bad actors
 - Proper 429 responses with Retry-After headers
+
+Dev Mode:
+- Set RATE_LIMIT_BYPASS=true to skip rate limiting (for testing/Swagger)
 """
 
+import os
 import time
 import logging
 from typing import Optional, Tuple
@@ -17,6 +21,14 @@ from fastapi import Request, HTTPException, status
 from redis import Redis
 
 logger = logging.getLogger(__name__)
+
+# =============================================================================
+# Dev Mode Bypass
+# =============================================================================
+
+def is_rate_limit_bypassed() -> bool:
+    """Check if rate limiting should be bypassed (read from env at request time)."""
+    return os.getenv("RATE_LIMIT_BYPASS", "false").lower() in ("true", "1", "yes")
 
 
 @dataclass
@@ -239,6 +251,11 @@ def rate_limit_request(
         HTTPException 403: If IP is blocklisted
         HTTPException 429: If rate limit exceeded
     """
+    # Dev mode bypass - skip all rate limiting
+    if is_rate_limit_bypassed():
+        logger.debug("Rate limit bypass enabled - skipping rate limiting (dev mode)")
+        return get_real_ip(request)
+    
     if limits is None:
         limits = [BURST_LIMIT, SUSTAINED_LIMIT]
     

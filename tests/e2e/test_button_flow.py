@@ -2,19 +2,90 @@
 E2E Tests - Button Press Flow
 
 Tests the complete flow from button press to state update.
-Run with: make test-e2e
 
-Note: These tests require both the API and Reducer to be running.
-For smoke tests that only need Docker, use: make test-smoke
+Prerequisites:
+-------------
+These tests require the API to be running. Before running these tests:
+
+1. Start infrastructure services:
+   $ make start
+
+2. Start the API (choose one):
+   Option A - Run locally:
+   $ make run-api
+   
+   Option B - Run in Docker:
+   $ make start-full
+   # OR
+   $ docker compose up -d api
+
+3. Wait a few seconds for the API to be ready, then run:
+   $ make test-e2e
+   # OR
+   $ poetry run pytest tests/e2e/test_button_flow.py
+
+Note: Some tests only require Docker services (Kafka, Redis) and will run
+even if the API is not running. Tests that require the API will be skipped
+with a helpful message if the API is not available.
+
+For smoke tests that only need Docker (no API required), use: make test-smoke
 """
 
 import pytest
 import time
 import json
+import hashlib
 from confluent_kafka import Consumer
 
 
 KAFKA_TOPIC = "press_button"
+
+
+def solve_challenge(challenge_id: str, difficulty: int) -> str:
+    """
+    Solve a PoW challenge by finding a nonce.
+    
+    This is what the client needs to do:
+    - Try nonces until SHA256(challenge_id + ":" + nonce) has required leading zeros
+    """
+    nonce = 0
+    target = "0" * difficulty
+    
+    while True:
+        nonce_str = str(nonce)
+        message = f"{challenge_id}:{nonce_str}".encode()
+        hash_result = hashlib.sha256(message).hexdigest()
+        
+        if hash_result.startswith(target):
+            return nonce_str
+        
+        nonce += 1
+        # Safety limit to prevent infinite loops
+        if nonce > 1000000:
+            raise ValueError("Could not solve challenge within reasonable time")
+
+
+def get_valid_press_request(http_client) -> dict:
+    """Get a challenge, solve it, and return a valid press request body."""
+    # Get a challenge
+    challenge_response = http_client.get("/v1/challenge")
+    assert challenge_response.status_code == 200
+    challenge = challenge_response.json()
+    
+    # Solve the challenge
+    nonce = solve_challenge(
+        challenge["challenge_id"],
+        challenge["difficulty"]
+    )
+    
+    # Return valid press request
+    return {
+        "challenge_id": challenge["challenge_id"],
+        "difficulty": challenge["difficulty"],
+        "expires_at": challenge["expires_at"],
+        "signature": challenge["signature"],
+        "nonce": nonce,
+    }
 
 
 @pytest.mark.usefixtures("api_running")
@@ -23,7 +94,8 @@ class TestButtonPressFlow:
 
     def test_press_button_returns_accepted(self, http_client, ensure_topic):
         """Pressing the button should return 202 Accepted."""
-        response = http_client.post("/v1/events/press")
+        press_request = get_valid_press_request(http_client)
+        response = http_client.post("/v1/events/press", json=press_request)
         
         assert response.status_code == 202
         data = response.json()
@@ -49,7 +121,8 @@ class TestButtonPressFlow:
         
         try:
             # Press the button
-            response = http_client.post("/v1/events/press")
+            press_request = get_valid_press_request(http_client)
+            response = http_client.post("/v1/events/press", json=press_request)
             assert response.status_code == 202
             press_data = response.json()
             request_id = press_data["request_id"]
@@ -80,8 +153,9 @@ class TestButtonPressFlow:
         request_ids = set()
         
         for _ in range(5):
-            response = http_client.post("/v1/events/press")
-            assert response.status_code == 202
+            press_request = get_valid_press_request(http_client)
+            response = http_client.post("/v1/events/press", json=press_request)
+            assert response.status_code == 202, f"Unexpected status: {response.status_code}, body: {response.text}"
             request_ids.add(response.json()["request_id"])
         
         assert len(request_ids) == 5, "All request IDs should be unique"
@@ -91,10 +165,12 @@ class TestButtonPressFlow:
         timestamps = []
         
         for _ in range(3):
-            response = http_client.post("/v1/events/press")
-            assert response.status_code == 202
+            press_request = get_valid_press_request(http_client)
+            response = http_client.post("/v1/events/press", json=press_request)
+            assert response.status_code == 202, f"Unexpected status: {response.status_code}, body: {response.text}"
             timestamps.append(response.json()["timestamp_ms"])
-            time.sleep(0.01)  # Small delay
+            # Small delay to ensure timestamps differ
+            time.sleep(0.01)
         
         for i in range(1, len(timestamps)):
             assert timestamps[i] >= timestamps[i-1], "Timestamps should be monotonic"

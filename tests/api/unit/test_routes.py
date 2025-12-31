@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch, AsyncMock
 from fastapi.testclient import TestClient
 from datetime import datetime
 import json
+import time
 
 # Mock the dependencies before importing routes
 # This prevents the module-level producer and redis_client from being created
@@ -40,6 +41,23 @@ def client(mock_producer, mock_redis_client, monkeypatch):
     monkeypatch.setattr(
         "api.redis.create_redis_connection", lambda: mock_redis_client
     )
+    
+    # Mock rate limiter functions to always allow requests (return a client IP)
+    # This must be done before importing routes
+    monkeypatch.setattr(
+        "api.ratelimiter.rate_limit_request", 
+        lambda request, redis_client, limits=None: "127.0.0.1"
+    )
+    monkeypatch.setattr(
+        "api.ratelimiter.rate_limit_press", 
+        lambda request, redis_client: "127.0.0.1"
+    )
+    
+    # Mock PoW verification to always pass
+    monkeypatch.setattr(
+        "api.pow.verify_solution",
+        lambda redis_client, solution: (True, None)
+    )
 
     # Now import routes (which will use our mocked functions)
     import importlib
@@ -57,10 +75,21 @@ def client(mock_producer, mock_redis_client, monkeypatch):
 
 class TestPressButton:
     """Unit tests for POST /v1/events/press endpoint."""
+    
+    @pytest.fixture(autouse=True)
+    def press_request_body(self):
+        """Valid press request body for all tests."""
+        return {
+            "challenge_id": "test-challenge-id",
+            "difficulty": 4,
+            "expires_at": int(time.time() * 1000) + 60000,
+            "signature": "test-signature",
+            "nonce": "test-nonce",
+        }
 
-    def test_returns_202_on_success(self, client, mock_producer):
+    def test_returns_202_on_success(self, client, mock_producer, press_request_body):
         """Should return 202 Accepted with request_id and timestamp."""
-        response = client.post("/v1/events/press")
+        response = client.post("/v1/events/press", json=press_request_body)
 
         assert response.status_code == 202
         data = response.json()
@@ -69,9 +98,9 @@ class TestPressButton:
         assert isinstance(data["request_id"], str)
         assert isinstance(data["timestamp_ms"], int)
 
-    def test_request_id_is_hex_uuid(self, client, mock_producer):
+    def test_request_id_is_hex_uuid(self, client, mock_producer, press_request_body):
         """Should return a valid hex UUID as request_id."""
-        response = client.post("/v1/events/press")
+        response = client.post("/v1/events/press", json=press_request_body)
 
         data = response.json()
         # UUID hex should be 32 characters
@@ -79,18 +108,18 @@ class TestPressButton:
         # Should be valid hex
         int(data["request_id"], 16)
 
-    def test_timestamp_is_current(self, client, mock_producer):
+    def test_timestamp_is_current(self, client, mock_producer, press_request_body):
         """Should return a timestamp close to current time."""
         import time
 
         before = int(time.time() * 1000)
-        response = client.post("/v1/events/press")
+        response = client.post("/v1/events/press", json=press_request_body)
         after = int(time.time() * 1000)
 
         data = response.json()
         assert before <= data["timestamp_ms"] <= after
 
-    def test_sends_message_to_kafka(self, client, mock_producer, monkeypatch):
+    def test_sends_message_to_kafka(self, client, mock_producer, monkeypatch, press_request_body):
         """Should send message to Kafka with correct payload."""
         sent_messages = []
 
@@ -101,13 +130,13 @@ class TestPressButton:
 
         monkeypatch.setattr(routes_module, "send_message", capture_send)
 
-        response = client.post("/v1/events/press")
+        response = client.post("/v1/events/press", json=press_request_body)
 
         assert len(sent_messages) == 1
         assert "timestamp_ms" in sent_messages[0]["value"]
         assert "request_id" in sent_messages[0]["value"]
 
-    def test_returns_503_when_flush_times_out(self, client, mock_producer, monkeypatch):
+    def test_returns_503_when_flush_times_out(self, client, mock_producer, monkeypatch, press_request_body):
         """Should return 503 when message flush times out."""
         import api.routes as routes_module
 
@@ -117,12 +146,12 @@ class TestPressButton:
 
         monkeypatch.setattr(routes_module, "flush_producer", mock_flush)
 
-        response = client.post("/v1/events/press")
+        response = client.post("/v1/events/press", json=press_request_body)
 
         assert response.status_code == 503
         assert "timed out" in response.json()["detail"].lower()
 
-    def test_returns_503_on_buffer_error(self, client, mock_producer, monkeypatch):
+    def test_returns_503_on_buffer_error(self, client, mock_producer, monkeypatch, press_request_body):
         """Should return 503 when producer buffer is full."""
         import api.routes as routes_module
 
@@ -131,12 +160,12 @@ class TestPressButton:
 
         monkeypatch.setattr(routes_module, "send_message", mock_send)
 
-        response = client.post("/v1/events/press")
+        response = client.post("/v1/events/press", json=press_request_body)
 
         assert response.status_code == 503
         assert "overloaded" in response.json()["detail"].lower()
 
-    def test_returns_503_on_kafka_exception(self, client, mock_producer, monkeypatch):
+    def test_returns_503_on_kafka_exception(self, client, mock_producer, monkeypatch, press_request_body):
         """Should return 503 when Kafka raises an exception."""
         import api.routes as routes_module
         from api.kafka import KafkaException
@@ -146,7 +175,7 @@ class TestPressButton:
 
         monkeypatch.setattr(routes_module, "send_message", mock_send)
 
-        response = client.post("/v1/events/press")
+        response = client.post("/v1/events/press", json=press_request_body)
 
         assert response.status_code == 503
         assert "unavailable" in response.json()["detail"].lower()
@@ -165,7 +194,7 @@ class TestGetCurrentState:
             "id": 1,
             "last_applied_offset": 100,
             "counter": 42,
-            "phase": Phase.ONE,
+            "phase": Phase.CALM,
             "entropy": 0.5,
             "reveal_until_ms": 1000,
             "cooldown_ms": 500,

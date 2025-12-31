@@ -170,15 +170,16 @@ class TestListenOnPubsub:
     """Unit tests for listen_on_pubsub async generator."""
 
     @pytest.mark.asyncio
-    async def test_subscribes_to_state_update_channel(self):
+    async def test_subscribes_to_state_update_channel(self, monkeypatch):
         """Should subscribe to the API_REDIS_STATE_UPDATE_CHANNEL."""
         subscribed_channels = []
 
         class MockPubSub:
-            def subscribe(self, channel):
+            async def subscribe(self, channel):
                 subscribed_channels.append(channel)
 
             async def listen(self):
+                # Empty generator - exits immediately
                 return
                 yield  # Make it a generator
 
@@ -188,26 +189,25 @@ class TestListenOnPubsub:
             async def close(self):
                 pass
 
-        class MockRedis:
+        class MockAsyncRedis:
             def pubsub(self, ignore_subscribe_messages=False):
                 return MockPubSub()
 
             async def close(self):
                 pass
 
-        fake_redis = MockRedis()
+        fake_async_redis = MockAsyncRedis()
+        monkeypatch.setattr(api_redis, "create_async_redis_connection", lambda: fake_async_redis)
 
         # Consume the generator
-        async for _ in api_redis.listen_on_pubsub(fake_redis):
+        async for _ in api_redis.listen_on_pubsub(None):
             pass
 
         assert api_redis.API_REDIS_STATE_UPDATE_CHANNEL in subscribed_channels
 
     @pytest.mark.asyncio
-    async def test_yields_persisted_global_state_from_messages(self):
+    async def test_yields_persisted_global_state_from_messages(self, monkeypatch):
         """Should yield PersistedGlobalState from valid messages."""
-        fake_redis = FakeRedis()
-
         state_data = {
             "id": 42,
             "last_applied_offset": 100,
@@ -219,7 +219,7 @@ class TestListenOnPubsub:
             def __init__(self):
                 self.subscribed_channels = []
 
-            def subscribe(self, channel):
+            async def subscribe(self, channel):
                 self.subscribed_channels.append(channel)
 
             async def listen(self):
@@ -231,10 +231,18 @@ class TestListenOnPubsub:
             async def close(self):
                 pass
 
-        fake_redis.pubsub = lambda ignore_subscribe_messages=False: MockPubSub()
+        class MockAsyncRedis:
+            def pubsub(self, ignore_subscribe_messages=False):
+                return MockPubSub()
+
+            async def close(self):
+                pass
+
+        fake_async_redis = MockAsyncRedis()
+        monkeypatch.setattr(api_redis, "create_async_redis_connection", lambda: fake_async_redis)
 
         results = []
-        async for state in api_redis.listen_on_pubsub(fake_redis):
+        async for state in api_redis.listen_on_pubsub(None):
             results.append(state)
 
         assert len(results) == 1
@@ -244,10 +252,8 @@ class TestListenOnPubsub:
         assert results[0].ruleshash == "abc123"
 
     @pytest.mark.asyncio
-    async def test_ignores_non_message_types(self):
+    async def test_ignores_non_message_types(self, monkeypatch):
         """Should only yield from messages with type 'message'."""
-        fake_redis = FakeRedis()
-
         state_data = {
             "id": 1,
             "last_applied_offset": 10,
@@ -259,7 +265,7 @@ class TestListenOnPubsub:
             def __init__(self):
                 self.subscribed_channels = []
 
-            def subscribe(self, channel):
+            async def subscribe(self, channel):
                 self.subscribed_channels.append(channel)
 
             async def listen(self):
@@ -276,20 +282,26 @@ class TestListenOnPubsub:
             async def close(self):
                 pass
 
-        fake_redis.pubsub = lambda ignore_subscribe_messages=False: MockPubSub()
+        class MockAsyncRedis:
+            def pubsub(self, ignore_subscribe_messages=False):
+                return MockPubSub()
+
+            async def close(self):
+                pass
+
+        fake_async_redis = MockAsyncRedis()
+        monkeypatch.setattr(api_redis, "create_async_redis_connection", lambda: fake_async_redis)
 
         results = []
-        async for state in api_redis.listen_on_pubsub(fake_redis):
+        async for state in api_redis.listen_on_pubsub(None):
             results.append(state)
 
         # Should only have one result from the actual message
         assert len(results) == 1
 
     @pytest.mark.asyncio
-    async def test_yields_multiple_states(self):
+    async def test_yields_multiple_states(self, monkeypatch):
         """Should yield multiple states from multiple messages."""
-        fake_redis = FakeRedis()
-
         states = [
             {
                 "id": 1,
@@ -315,7 +327,7 @@ class TestListenOnPubsub:
             def __init__(self):
                 self.subscribed_channels = []
 
-            def subscribe(self, channel):
+            async def subscribe(self, channel):
                 self.subscribed_channels.append(channel)
 
             async def listen(self):
@@ -328,10 +340,18 @@ class TestListenOnPubsub:
             async def close(self):
                 pass
 
-        fake_redis.pubsub = lambda ignore_subscribe_messages=False: MockPubSub()
+        class MockAsyncRedis:
+            def pubsub(self, ignore_subscribe_messages=False):
+                return MockPubSub()
+
+            async def close(self):
+                pass
+
+        fake_async_redis = MockAsyncRedis()
+        monkeypatch.setattr(api_redis, "create_async_redis_connection", lambda: fake_async_redis)
 
         results = []
-        async for state in api_redis.listen_on_pubsub(fake_redis):
+        async for state in api_redis.listen_on_pubsub(None):
             results.append(state)
 
         assert len(results) == 3
@@ -340,7 +360,7 @@ class TestListenOnPubsub:
         assert results[2].id == 3
 
     @pytest.mark.asyncio
-    async def test_cleans_up_on_normal_exit(self):
+    async def test_cleans_up_on_normal_exit(self, monkeypatch):
         """Should unsubscribe and close connections on normal exit."""
         unsubscribed = []
         pubsub_closed = False
@@ -350,7 +370,7 @@ class TestListenOnPubsub:
             def __init__(self):
                 self.subscribed_channels = []
 
-            def subscribe(self, channel):
+            async def subscribe(self, channel):
                 self.subscribed_channels.append(channel)
 
             async def listen(self):
@@ -366,7 +386,7 @@ class TestListenOnPubsub:
                 nonlocal pubsub_closed
                 pubsub_closed = True
 
-        class MockRedis:
+        class MockAsyncRedis:
             def pubsub(self, ignore_subscribe_messages=False):
                 return MockPubSub()
 
@@ -374,9 +394,10 @@ class TestListenOnPubsub:
                 nonlocal redis_closed
                 redis_closed = True
 
-        fake_redis = MockRedis()
+        fake_async_redis = MockAsyncRedis()
+        monkeypatch.setattr(api_redis, "create_async_redis_connection", lambda: fake_async_redis)
 
-        async for _ in api_redis.listen_on_pubsub(fake_redis):
+        async for _ in api_redis.listen_on_pubsub(None):
             pass
 
         assert api_redis.API_REDIS_STATE_UPDATE_CHANNEL in unsubscribed
@@ -384,7 +405,7 @@ class TestListenOnPubsub:
         assert redis_closed
 
     @pytest.mark.asyncio
-    async def test_logs_and_handles_connection_error(self, caplog):
+    async def test_logs_and_handles_connection_error(self, caplog, monkeypatch):
         """Should log error on ConnectionError and clean up."""
         pubsub_closed = False
         redis_closed = False
@@ -393,7 +414,7 @@ class TestListenOnPubsub:
             def __init__(self):
                 self.subscribed_channels = []
 
-            def subscribe(self, channel):
+            async def subscribe(self, channel):
                 self.subscribed_channels.append(channel)
 
             async def listen(self):
@@ -407,7 +428,7 @@ class TestListenOnPubsub:
                 nonlocal pubsub_closed
                 pubsub_closed = True
 
-        class MockRedis:
+        class MockAsyncRedis:
             def pubsub(self, ignore_subscribe_messages=False):
                 return MockPubSub()
 
@@ -415,10 +436,11 @@ class TestListenOnPubsub:
                 nonlocal redis_closed
                 redis_closed = True
 
-        fake_redis = MockRedis()
+        fake_async_redis = MockAsyncRedis()
+        monkeypatch.setattr(api_redis, "create_async_redis_connection", lambda: fake_async_redis)
 
         results = []
-        async for state in api_redis.listen_on_pubsub(fake_redis):
+        async for state in api_redis.listen_on_pubsub(None):
             results.append(state)
 
         # Should have handled the error gracefully
@@ -427,7 +449,7 @@ class TestListenOnPubsub:
         assert redis_closed
 
     @pytest.mark.asyncio
-    async def test_logs_and_handles_timeout_error(self, caplog):
+    async def test_logs_and_handles_timeout_error(self, caplog, monkeypatch):
         """Should log error on TimeoutError and clean up."""
         pubsub_closed = False
         redis_closed = False
@@ -436,7 +458,7 @@ class TestListenOnPubsub:
             def __init__(self):
                 self.subscribed_channels = []
 
-            def subscribe(self, channel):
+            async def subscribe(self, channel):
                 self.subscribed_channels.append(channel)
 
             async def listen(self):
@@ -450,7 +472,7 @@ class TestListenOnPubsub:
                 nonlocal pubsub_closed
                 pubsub_closed = True
 
-        class MockRedis:
+        class MockAsyncRedis:
             def pubsub(self, ignore_subscribe_messages=False):
                 return MockPubSub()
 
@@ -458,10 +480,11 @@ class TestListenOnPubsub:
                 nonlocal redis_closed
                 redis_closed = True
 
-        fake_redis = MockRedis()
+        fake_async_redis = MockAsyncRedis()
+        monkeypatch.setattr(api_redis, "create_async_redis_connection", lambda: fake_async_redis)
 
         results = []
-        async for state in api_redis.listen_on_pubsub(fake_redis):
+        async for state in api_redis.listen_on_pubsub(None):
             results.append(state)
 
         assert len(results) == 0
@@ -469,7 +492,7 @@ class TestListenOnPubsub:
         assert redis_closed
 
     @pytest.mark.asyncio
-    async def test_raises_unexpected_exceptions(self):
+    async def test_raises_unexpected_exceptions(self, monkeypatch):
         """Should re-raise unexpected exceptions after cleanup."""
         pubsub_closed = False
         redis_closed = False
@@ -478,7 +501,7 @@ class TestListenOnPubsub:
             def __init__(self):
                 self.subscribed_channels = []
 
-            def subscribe(self, channel):
+            async def subscribe(self, channel):
                 self.subscribed_channels.append(channel)
 
             async def listen(self):
@@ -492,7 +515,7 @@ class TestListenOnPubsub:
                 nonlocal pubsub_closed
                 pubsub_closed = True
 
-        class MockRedis:
+        class MockAsyncRedis:
             def pubsub(self, ignore_subscribe_messages=False):
                 return MockPubSub()
 
@@ -500,10 +523,11 @@ class TestListenOnPubsub:
                 nonlocal redis_closed
                 redis_closed = True
 
-        fake_redis = MockRedis()
+        fake_async_redis = MockAsyncRedis()
+        monkeypatch.setattr(api_redis, "create_async_redis_connection", lambda: fake_async_redis)
 
         with pytest.raises(ValueError, match="Unexpected error"):
-            async for _ in api_redis.listen_on_pubsub(fake_redis):
+            async for _ in api_redis.listen_on_pubsub(None):
                 pass
 
         # Cleanup should still happen

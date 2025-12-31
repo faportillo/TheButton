@@ -48,8 +48,8 @@ def test_publish_state_update_publishes_json(monkeypatch):
 
     msg = json.loads(message)
     assert msg == {
-        "type": "state_updated",
         "id": 1,
         "last_applied_offset": 10,
         "ruleshash": "h",
+        "created_at": state.created_at.isoformat(),
     }

@@ -21,17 +21,41 @@ class TestInfrastructureSmoke:
 
     def test_postgres_tables_exist(self, db_engine):
         """Verify database schema is migrated."""
+        # Use database-agnostic query that works for both PostgreSQL and SQLite
         with db_engine.connect() as conn:
-            result = conn.execute(text("""
-                SELECT table_name FROM information_schema.tables 
-                WHERE table_schema = 'public' 
-                AND table_name IN ('global_states', 'rulesets', 'alembic_version')
-            """))
+            # Check database dialect
+            dialect_name = db_engine.dialect.name
+            if dialect_name == "postgresql":
+                result = conn.execute(text("""
+                    SELECT table_name FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name IN ('global_states', 'rulesets', 'alembic_version')
+                """))
+            elif dialect_name == "sqlite":
+                result = conn.execute(text("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' 
+                    AND name IN ('global_states', 'rulesets', 'alembic_version')
+                """))
+            else:
+                pytest.skip(f"Unsupported database dialect: {dialect_name}")
+            
             tables = {row[0] for row in result}
         
-        assert "global_states" in tables, "global_states table missing"
-        assert "rulesets" in tables, "rulesets table missing"
-        assert "alembic_version" in tables, "alembic_version table missing (migrations not applied?)"
+        missing_tables = []
+        if "global_states" not in tables:
+            missing_tables.append("global_states")
+        if "rulesets" not in tables:
+            missing_tables.append("rulesets")
+        if "alembic_version" not in tables:
+            missing_tables.append("alembic_version")
+        
+        if missing_tables:
+            pytest.fail(
+                f"Missing tables: {', '.join(missing_tables)}. "
+                f"Database migrations may not have been applied. "
+                f"Run 'make start' or 'make db-upgrade' to apply migrations."
+            )
 
     def test_redis_connection(self, redis_client):
         """Verify Redis is accessible and responding."""

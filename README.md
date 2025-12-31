@@ -390,6 +390,59 @@ make test-match PATTERN="health"
 
 See `make help` for all available test targets.
 
+### E2E Tests
+
+End-to-end tests verify the complete flow from button press to state update. These tests require:
+
+1. **Docker services running** (PostgreSQL, Redis, Kafka)
+2. **API running** at `http://localhost:8000`
+
+#### Quick Start for E2E Tests
+
+```bash
+# Option 1: Start infrastructure + API locally
+make start          # Start Docker services
+make run-api        # Start API locally (reads from .env)
+
+# Option 2: Start everything in Docker
+make start-full     # Start all services including API in Docker
+
+# Then run e2e tests
+make test-e2e
+```
+
+**Note**: For e2e tests, it's recommended to set `RATE_LIMIT_BYPASS=true` in your `.env` file to avoid rate limiting issues during testing. This is already set in `example.env` by default.
+
+#### E2E Test Categories
+
+- **Smoke Tests** (`test_smoke.py`): Quick health checks, only require Docker services
+
+  ```bash
+  make test-smoke
+  ```
+
+- **Button Flow Tests** (`test_button_flow.py`): Full flow tests, require API + Docker
+  ```bash
+  make test-e2e
+  ```
+
+If the API is not running, tests that require it will be **skipped** with a helpful message:
+
+```
+SKIPPED [1] tests/e2e/test_button_flow.py:72: API is not running at http://localhost:8000.
+To run these e2e tests, start the API first:
+  • Run locally: make start && make run-api
+  • Run in Docker: make start-full
+  • Or use: docker compose up -d api
+Then wait a few seconds for the API to be ready and run the tests again.
+```
+
+#### Troubleshooting E2E Tests
+
+- **Tests skipped?** Make sure the API is running: `curl http://localhost:8000/health/live`
+- **Database errors?** Run migrations: `make db-upgrade`
+- **Connection refused?** Check Docker services: `make status`
+
 ### Testing the Streaming Endpoint
 
 The `/v1/states/stream` endpoint uses Server-Sent Events (SSE) and cannot be tested directly in Swagger. Here are three ways to test it:
@@ -442,7 +495,7 @@ To see state updates in the stream:
    ```bash
    # First, get a challenge
    curl -X POST http://localhost:8000/v1/challenge
-   
+
    # Then press the button (requires solving PoW or set POW_BYPASS=true in .env)
    curl -X POST http://localhost:8000/v1/events/press \
      -H "Content-Type: application/json" \

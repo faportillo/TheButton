@@ -8,12 +8,17 @@ class _FakeConsumer:
         self.config = config
         self.subscriptions = []
         self.polled = []
+        self.consumed = []
 
     def subscribe(self, topics):
         self.subscriptions.extend(topics)
 
     def poll(self, timeout):
         self.polled.append(timeout)
+        return []
+
+    def consume(self, num_messages=1, timeout=1.0):
+        self.consumed.append((num_messages, timeout))
         return []
 
 

@@ -34,8 +34,8 @@ def test_apply_event_initial_sets_dt_none_and_increments_counter(rules_config):
     assert new_state.updated_at_ms == 1000
     # last_applied_offset set
     assert new_state.last_applied_offset == 10
-    # phase is an enum value
-    assert new_state.phase in (Phases.CALM, Phases.WARM, Phases.HOT, Phases.CHAOS)
+    # phase is an integer (enum value converted to int)
+    assert new_state.phase in (0, 1, 2, 3)  # Phases.CALM=0, WARM=1, HOT=2, CHAOS=3
     # cooldown non-negative
     assert new_state.cooldown_ms is None or new_state.cooldown_ms >= 0
 

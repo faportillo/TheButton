@@ -59,7 +59,7 @@ def require_press_rate_limit(request: Request) -> str:
 # =============================================================================
 
 
-@app.post(
+@app.get(
     "/v1/challenge",
     response_model=ChallengeResponse,
     status_code=status.HTTP_200_OK,
