@@ -21,7 +21,9 @@ def stream_states(url: str, timeout: int = 60):
     stream_url = f"{url}/v1/states/stream"
     
     print(f"Connecting to {stream_url}...")
-    print("Waiting for state updates (press Ctrl+C to stop)...\n")
+    print("Waiting for state updates (press Ctrl+C to stop)...")
+    print("Note: Updates will only appear when the reducer processes button presses.")
+    print("Make sure the reducer is running: make run-reducer\n")
     
     try:
         response = requests.get(
@@ -32,9 +34,18 @@ def stream_states(url: str, timeout: int = 60):
         )
         response.raise_for_status()
         
+        print("✓ Connected to stream successfully")
+        print("Listening for updates...\n")
+        
         # Process SSE stream
         buffer = ""
+        line_count = 0
         for line in response.iter_lines(decode_unicode=True):
+            line_count += 1
+            # Print a heartbeat every 30 seconds to show we're still connected
+            if line_count % 1000 == 0:
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Still listening... (received {line_count} lines)")
+            
             if not line:
                 # Empty line indicates end of event
                 if buffer:
@@ -48,6 +59,10 @@ def stream_states(url: str, timeout: int = 60):
         print("\n\nStream interrupted by user")
     except requests.exceptions.RequestException as e:
         print(f"\nError connecting to stream: {e}", file=sys.stderr)
+        print("\nTroubleshooting:")
+        print("1. Is the API running? Check: curl http://localhost:8000/health")
+        print("2. Is the reducer running? Check: ps aux | grep reducer")
+        print("3. Are Docker services up? Check: make status")
         sys.exit(1)
 
 
@@ -75,7 +90,13 @@ def process_event(event_text: str):
     elif event_type == "error":
         print(f"[{timestamp}] Error: {data}")
     else:
-        print(f"[{timestamp}] Event ({event_type}): {event_text}")
+        # Handle events without explicit event type (defaults to "message")
+        if event_type is None and data is not None:
+            print(f"[{timestamp}] Message:")
+            print(json.dumps(data, indent=2, default=str))
+            print("-" * 60)
+        else:
+            print(f"[{timestamp}] Event ({event_type}): {event_text}")
 
 
 if __name__ == "__main__":
