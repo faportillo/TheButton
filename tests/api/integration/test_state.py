@@ -1,6 +1,6 @@
 import pytest
 from sqlalchemy import insert
-from shared.models import GlobalState, GlobalStateEntity
+from shared.models import GlobalState
 import api.state as state
 
 
@@ -37,17 +37,16 @@ class TestGetLatestState:
 
         result = state.get_latest_state()
 
-        assert result.last_applied_offset == 20
-        assert result.updated_at_ms == 2000
-        assert result.ruleshash == "hash2"
-        assert result.counter == 10
-        assert result.phase == 2
-        assert result.entropy == 200
-        assert result.reveal_until_ms == 1000
-        assert result.cooldown_ms == 400
+        assert result["last_applied_offset"] == 20
+        assert result["updated_at_ms"] == 2000
+        assert result["counter"] == 10
+        assert result["phase"] == 2
+        assert result["entropy"] == 200
+        assert result["reveal_until_ms"] == 1000
+        assert result["cooldown_ms"] == 400
 
-    def test_returns_global_state_entity(self, patch_state_db):
-        """Should return a GlobalStateEntity dataclass."""
+    def test_returns_dict(self, patch_state_db):
+        """Should return a dictionary."""
         with state.SessionLocal.begin() as db:
             db.execute(
                 insert(GlobalState).values(
@@ -64,7 +63,7 @@ class TestGetLatestState:
 
         result = state.get_latest_state()
 
-        assert isinstance(result, GlobalStateEntity)
+        assert isinstance(result, dict)
 
     def test_handles_null_cooldown_ms(self, patch_state_db):
         """Should handle null cooldown_ms correctly."""
@@ -84,7 +83,7 @@ class TestGetLatestState:
 
         result = state.get_latest_state()
 
-        assert result.cooldown_ms is None
+        assert result["cooldown_ms"] is None
 
     def test_raises_lookup_error_when_no_state_exists(self, patch_state_db):
         """Should raise LookupError when no state exists in database."""
@@ -126,15 +125,14 @@ class TestGetStateById:
         # Get the first state by id=1
         result = state.get_state_by_id(1)
 
-        assert result.id == 1
-        assert result.last_applied_offset == 10
-        assert result.updated_at_ms == 1000
-        assert result.ruleshash == "hash1"
-        assert result.counter == 5
-        assert result.phase == 1
-        assert result.entropy == 100
-        assert result.reveal_until_ms == 500
-        assert result.cooldown_ms == 200
+        assert result["id"] == 1
+        assert result["last_applied_offset"] == 10
+        assert result["updated_at_ms"] == 1000
+        assert result["counter"] == 5
+        assert result["phase"] == 1
+        assert result["entropy"] == 100
+        assert result["reveal_until_ms"] == 500
+        assert result["cooldown_ms"] == 200
 
     def test_returns_second_state_by_id(self, patch_state_db):
         """Should return the second state when requested by id=2."""
@@ -166,12 +164,11 @@ class TestGetStateById:
 
         result = state.get_state_by_id(2)
 
-        assert result.id == 2
-        assert result.last_applied_offset == 20
-        assert result.ruleshash == "hash2"
+        assert result["id"] == 2
+        assert result["last_applied_offset"] == 20
 
-    def test_returns_global_state_entity(self, patch_state_db):
-        """Should return a GlobalStateEntity dataclass."""
+    def test_returns_dict(self, patch_state_db):
+        """Should return a dictionary."""
         with state.SessionLocal.begin() as db:
             db.execute(
                 insert(GlobalState).values(
@@ -188,7 +185,7 @@ class TestGetStateById:
 
         result = state.get_state_by_id(1)
 
-        assert isinstance(result, GlobalStateEntity)
+        assert isinstance(result, dict)
 
     def test_raises_lookup_error_when_id_not_found(self, patch_state_db):
         """Should raise LookupError when no state with given id exists."""
@@ -215,11 +212,11 @@ class TestGetStateById:
             state.get_state_by_id(1)
 
 
-class TestOrmToEntity:
-    """Unit tests for _orm_to_entity helper function."""
+class TestOrmToDict:
+    """Unit tests for _orm_to_dict helper function."""
 
     def test_converts_all_fields_correctly(self, patch_state_db):
-        """Should correctly map all ORM fields to entity fields."""
+        """Should correctly map all ORM fields to dictionary fields."""
         with state.SessionLocal.begin() as db:
             db.execute(
                 insert(GlobalState).values(
@@ -238,20 +235,21 @@ class TestOrmToEntity:
             from sqlalchemy import select
 
             orm_obj = db.execute(select(GlobalState)).scalars().first()
-            result = state._orm_to_entity(orm_obj)
+            result = state._orm_to_dict(orm_obj)
 
-        assert result.id == 1
-        assert result.last_applied_offset == 42
-        assert result.updated_at_ms == 123456
-        assert result.ruleshash == "testhash"
-        assert result.counter == 7
-        assert result.phase == 3
-        assert result.entropy == 500
-        assert result.reveal_until_ms == 1500
-        assert result.cooldown_ms == 750
+        assert result["id"] == 1
+        assert result["last_applied_offset"] == 42
+        assert result["updated_at_ms"] == 123456
+        assert result["counter"] == 7
+        assert result["phase"] == 3
+        assert result["entropy"] == 500
+        assert result["reveal_until_ms"] == 1500
+        assert result["cooldown_ms"] == 750
+        assert "created_at" in result
+        assert result["created_at"] is not None
 
-    def test_result_is_frozen_dataclass(self, patch_state_db):
-        """Should return a frozen dataclass that cannot be modified."""
+    def test_result_is_dict(self, patch_state_db):
+        """Should return a dictionary."""
         with state.SessionLocal.begin() as db:
             db.execute(
                 insert(GlobalState).values(
@@ -270,11 +268,10 @@ class TestOrmToEntity:
             from sqlalchemy import select
 
             orm_obj = db.execute(select(GlobalState)).scalars().first()
-            result = state._orm_to_entity(orm_obj)
+            result = state._orm_to_dict(orm_obj)
 
-        # GlobalStateEntity is a frozen dataclass, so it should raise FrozenInstanceError
-        from dataclasses import FrozenInstanceError
-
-        with pytest.raises(FrozenInstanceError):
-            result.counter = 999
+        assert isinstance(result, dict)
+        # Dictionary can be modified
+        result["counter"] = 999
+        assert result["counter"] == 999
 
