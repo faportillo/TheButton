@@ -41,7 +41,7 @@ def apply_event(
         updated_at_ms=event.timestamp_ms,
         ruleshash=rules_hash,
         counter=new_state_counter,
-        phase=new_phase,
+        phase=new_phase.value,  # Convert Phases enum to int
         entropy=new_entropy,
         reveal_until_ms=new_reveal,
         cooldown_ms=new_countdown,

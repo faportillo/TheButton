@@ -1,6 +1,6 @@
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy import DateTime, JSON
+from sqlalchemy import DateTime, JSON, BigInteger, Float
 from sqlalchemy.sql import func
 import datetime
 from dataclasses import dataclass
@@ -92,10 +92,10 @@ class GlobalState(Base):
     ruleshash: Mapped[str] = mapped_column(nullable=False)
     counter: Mapped[int] = mapped_column(nullable=False)
     phase: Mapped[int] = mapped_column(nullable=False)
-    entropy: Mapped[int] = mapped_column(nullable=False)
-    reveal_until_ms: Mapped[int] = mapped_column(nullable=False)
+    entropy: Mapped[float] = mapped_column(Float, nullable=False)
+    reveal_until_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
     cooldown_ms: Mapped[int] = mapped_column(nullable=True)
-    updated_at_ms: Mapped[int] = mapped_column(nullable=False)
+    updated_at_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

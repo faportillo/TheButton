@@ -1,10 +1,10 @@
 from reducer.config import settings
-from consumer import create_consumer, poll_batch_messages
-from notify import create_redis_connection, publish_state_update
-from writer import write_state
-from updater import apply_batch
+from reducer.consumer import create_consumer, poll_batch_messages
+from reducer.notify import create_redis_connection, publish_state_update
+from reducer.writer import write_state, get_latest_state, get_initial_state
+from reducer.updater import apply_batch
 from shared.models import PressEvent
-from rules.retriever import get_latest_rules
+from reducer.rules.retriever import get_latest_rules
 import json
 import logging
 import time
@@ -18,6 +18,15 @@ def main():
     consumer = create_consumer()
     redis = create_redis_connection()
     ruleset, rules_config = get_latest_rules()
+
+    # Load existing state from DB or create initial state
+    state = get_latest_state()
+    if state is None:
+        state = get_initial_state(ruleset.hash)
+        logger.info("No existing state found, starting with initial state")
+    else:
+        logger.info(f"Loaded existing state: counter={state.counter}, offset={state.last_applied_offset}")
+
     try:
         while True:
             try:
@@ -32,7 +41,7 @@ def main():
                         events.append(
                             PressEvent(
                                 offset=msg.offset(),
-                                ts_ms=payload["ts_ms"],
+                                timestamp_ms=payload["timestamp_ms"],
                                 request_id=payload["request_id"],
                             )
                         )
@@ -75,3 +84,7 @@ def main():
     finally:
         consumer.close()
         logger.info("Kafka consumer closed")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TheButton - State Stream Test</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        color: #333;
+        margin-top: 0;
+      }
+      .controls {
+        margin-bottom: 20px;
+        padding: 15px;
+        background: #f9f9f9;
+        border-radius: 4px;
+      }
+      input[type="text"] {
+        width: 300px;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+      }
+      button {
+        padding: 8px 16px;
+        margin-left: 10px;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+      button:hover {
+        background: #0056b3;
+      }
+      button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+      .status {
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 4px;
+        font-weight: bold;
+      }
+      .status.connected {
+        background: #d4edda;
+        color: #155724;
+      }
+      .status.disconnected {
+        background: #f8d7da;
+        color: #721c24;
+      }
+      .status.connecting {
+        background: #fff3cd;
+        color: #856404;
+      }
+      #events {
+        max-height: 600px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 10px;
+        background: #fafafa;
+        font-family: "Courier New", monospace;
+        font-size: 12px;
+      }
+      .event {
+        margin: 10px 0;
+        padding: 10px;
+        background: white;
+        border-left: 3px solid #007bff;
+        border-radius: 2px;
+      }
+      .event.error {
+        border-left-color: #dc3545;
+      }
+      .event-header {
+        color: #666;
+        font-size: 11px;
+        margin-bottom: 5px;
+      }
+      .event-data {
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      }
+      .clear-btn {
+        background: #6c757d;
+      }
+      .clear-btn:hover {
+        background: #5a6268;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🔴 TheButton - State Stream Test</h1>
+
+      <div class="controls">
+        <label for="apiUrl">API URL:</label>
+        <input
+          type="text"
+          id="apiUrl"
+          value="http://localhost:8000"
+          placeholder="http://localhost:8000"
+        />
+        <button id="connectBtn" onclick="connect()">Connect</button>
+        <button id="disconnectBtn" onclick="disconnect()" disabled>
+          Disconnect
+        </button>
+        <button class="clear-btn" onclick="clearEvents()">Clear</button>
+      </div>
+
+      <div id="status" class="status disconnected">Disconnected</div>
+
+      <h3>Events:</h3>
+      <div id="events"></div>
+    </div>
+
+    <script>
+      let eventSource = null;
+      const eventsDiv = document.getElementById("events");
+      const statusDiv = document.getElementById("status");
+      const connectBtn = document.getElementById("connectBtn");
+      const disconnectBtn = document.getElementById("disconnectBtn");
+
+      function addEvent(type, data) {
+        const eventDiv = document.createElement("div");
+        eventDiv.className = `event ${type === "error" ? "error" : ""}`;
+
+        const timestamp = new Date().toLocaleTimeString();
+        const header = document.createElement("div");
+        header.className = "event-header";
+        header.textContent = `[${timestamp}] ${
+          type === "state_update" ? "State Update" : "Error"
+        }`;
+
+        const dataDiv = document.createElement("div");
+        dataDiv.className = "event-data";
+        dataDiv.textContent = JSON.stringify(data, null, 2);
+
+        eventDiv.appendChild(header);
+        eventDiv.appendChild(dataDiv);
+        eventsDiv.appendChild(eventDiv);
+
+        // Auto-scroll to bottom
+        eventsDiv.scrollTop = eventsDiv.scrollHeight;
+      }
+
+      function updateStatus(status, message) {
+        statusDiv.className = `status ${status}`;
+        statusDiv.textContent = message;
+      }
+
+      function connect() {
+        const apiUrl = document.getElementById("apiUrl").value.trim();
+        if (!apiUrl) {
+          alert("Please enter an API URL");
+          return;
+        }
+
+        const streamUrl = `${apiUrl}/v1/states/stream`;
+        updateStatus("connecting", "Connecting...");
+
+        eventSource = new EventSource(streamUrl);
+
+        eventSource.onopen = () => {
+          updateStatus("connected", "Connected - Waiting for updates...");
+          connectBtn.disabled = true;
+          disconnectBtn.disabled = false;
+        };
+
+        eventSource.addEventListener("state_update", (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            addEvent("state_update", data);
+          } catch (err) {
+            addEvent("error", {
+              error: "Failed to parse event data",
+              raw: e.data,
+            });
+          }
+        });
+
+        eventSource.addEventListener("error", (e) => {
+          addEvent("error", {
+            error: "Stream error",
+            message: e.message || "Connection error",
+          });
+        });
+
+        eventSource.onerror = (e) => {
+          updateStatus(
+            "disconnected",
+            "Connection error - Check console for details"
+          );
+          connectBtn.disabled = false;
+          disconnectBtn.disabled = true;
+          if (eventSource.readyState === EventSource.CLOSED) {
+            eventSource = null;
+          }
+        };
+      }
+
+      function disconnect() {
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+          updateStatus("disconnected", "Disconnected");
+          connectBtn.disabled = false;
+          disconnectBtn.disabled = true;
+        }
+      }
+
+      function clearEvents() {
+        eventsDiv.innerHTML = "";
+      }
+
+      // Allow Enter key to connect
+      document.getElementById("apiUrl").addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          connect();
+        }
+      });
+    </script>
+  </body>
+</html>

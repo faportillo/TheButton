@@ -20,7 +20,23 @@ def create_consumer(
     return consumer
 
 
-def poll_batch_messages(consumer: Consumer, timeout: float = 0.1) -> Message:
-    msgs: Message | None = consumer.poll(timeout)
-    logger.debug(f"Successfully polled messages of len=={len(msgs)}")
-    return msgs
+def poll_batch_messages(
+    consumer: Consumer,
+    batch_size: int = settings.kafka_max_batch_size,
+    timeout: float = 1.0,
+) -> list[Message]:
+    """
+    Poll for a batch of messages from Kafka.
+
+    Args:
+        consumer: Kafka consumer instance
+        batch_size: Maximum number of messages to fetch
+        timeout: Timeout in seconds for the consume operation
+
+    Returns:
+        List of messages (may be empty if no messages available)
+    """
+    msgs: list[Message] = consumer.consume(num_messages=batch_size, timeout=timeout)
+    if msgs:
+        logger.debug(f"Successfully polled {len(msgs)} messages")
+    return msgs if msgs else []

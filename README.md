@@ -173,10 +173,36 @@ Defined in `src/shared/constants.py`:
 - [Poetry](https://python-poetry.org/docs/#installation)
 - Docker & Docker Compose
 
-### 1. Start Infrastructure
+### Quick Start
+
+The fastest way to get everything running:
+
+```bash
+# 1. Install dependencies
+poetry install
+
+# 2. Set up environment file
+make setup-env
+
+# 3. Start infrastructure (PostgreSQL, Redis, Kafka)
+make start
+
+# 4. In separate terminals, start the services:
+make run-api      # Terminal 1: API server
+make run-reducer  # Terminal 2: Reducer service
+```
+
+The API will be available at `http://localhost:8000`.
+
+### Detailed Setup
+
+#### 1. Start Infrastructure
 
 ```bash
 # Start PostgreSQL, Redis, and Kafka
+make start
+
+# Or manually:
 docker compose up -d postgres redis kafka
 
 # Or start with admin UIs (Kafka UI, Redis Commander, pgAdmin)
@@ -189,7 +215,7 @@ Verify services are healthy:
 make docker-health
 ```
 
-### 2. Install Dependencies
+#### 2. Install Dependencies
 
 ```bash
 # Configure Poetry to use in-project virtualenv (optional)
@@ -199,7 +225,7 @@ poetry config virtualenvs.in-project true
 poetry install
 ```
 
-### 3. Configure Environment
+#### 3. Configure Environment
 
 ```bash
 # Create .env from example
@@ -209,25 +235,65 @@ make setup-env
 cp example.env .env
 ```
 
-### 4. Run Database Migrations
+Edit `.env` if needed (defaults should work for local development).
 
-> **Note**: Migrations directory exists but migrations are not yet implemented. For now, tables are created by SQLAlchemy when the reducer starts (or use test fixtures).
-
-### 5. Start the API
+#### 4. Run Database Migrations
 
 ```bash
+# Run migrations (creates tables)
+poetry run alembic upgrade head
+```
+
+#### 5. Start the API
+
+```bash
+# Using Makefile
+make run-api
+
+# Or manually
 poetry run uvicorn api.routes:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The API will be available at `http://localhost:8000`.
-
-### 6. Start the Reducer
+The API will be available at `http://localhost:8000`. You can verify it's running:
 
 ```bash
+curl http://localhost:8000/health
+```
+
+#### 6. Start the Reducer
+
+In a separate terminal:
+
+```bash
+# Using Makefile
+make run-reducer
+
+# Or manually
 poetry run python -m reducer.main
 ```
 
-The reducer will connect to Kafka and begin consuming press events.
+The reducer will connect to Kafka and begin consuming press events. You should see log messages indicating it's ready.
+
+### Running Everything in Docker
+
+Alternatively, you can run the entire stack in Docker:
+
+```bash
+# Start everything (infrastructure + API + reducer)
+make start-full
+
+# View logs
+make logs-apps
+
+# Stop everything
+make stop
+```
+
+### Verifying the Setup
+
+1. **Check API health**: `curl http://localhost:8000/health`
+2. **Check current state**: `curl http://localhost:8000/v1/states/current`
+3. **Test button press**: See [Testing the Streaming Endpoint](#testing-the-streaming-endpoint) below
 
 ## API Endpoints
 
@@ -288,6 +354,8 @@ event: state_update
 data: {"id": 44, "counter": 12347, ...}
 ```
 
+See [Testing the Streaming Endpoint](#testing-the-streaming-endpoint) below for how to test this endpoint.
+
 ### Health Checks
 
 | Endpoint            | Purpose              | Checks                 |
@@ -297,6 +365,8 @@ data: {"id": 44, "counter": 12347, ...}
 | `GET /health/ready` | Kubernetes readiness | Redis, Kafka           |
 
 ## Testing
+
+### Running Tests
 
 ```bash
 # Run all tests
@@ -319,6 +389,75 @@ make test-match PATTERN="health"
 ```
 
 See `make help` for all available test targets.
+
+### Testing the Streaming Endpoint
+
+The `/v1/states/stream` endpoint uses Server-Sent Events (SSE) and cannot be tested directly in Swagger. Here are three ways to test it:
+
+#### Option 1: Python Script (Recommended)
+
+A simple Python script is provided for command-line testing:
+
+```bash
+# Basic usage (defaults to http://localhost:8000)
+python test_stream.py
+
+# Custom URL
+python test_stream.py --url http://localhost:8000
+
+# Custom timeout
+python test_stream.py --timeout 120
+```
+
+The script will connect to the stream and print state updates as they arrive in real-time.
+
+#### Option 2: HTML Test Page
+
+Open `test_stream.html` in your web browser. This provides a visual interface with:
+
+- Connection controls (connect/disconnect)
+- Real-time display of state updates
+- Formatted JSON output
+- Status indicators
+
+Simply open the file in your browser, enter the API URL (default: `http://localhost:8000`), and click "Connect".
+
+#### Option 3: curl Command
+
+For quick testing from the command line:
+
+```bash
+curl -N -H "Accept: text/event-stream" http://localhost:8000/v1/states/stream
+```
+
+The `-N` flag disables buffering so you see events in real-time.
+
+#### Testing the Full Flow
+
+To see state updates in the stream:
+
+1. **Start the stream** using one of the methods above
+2. **Trigger state updates** by pressing the button (in another terminal):
+
+   ```bash
+   # First, get a challenge
+   curl -X POST http://localhost:8000/v1/challenge
+   
+   # Then press the button (requires solving PoW or set POW_BYPASS=true in .env)
+   curl -X POST http://localhost:8000/v1/events/press \
+     -H "Content-Type: application/json" \
+     -d '{
+       "challenge_id": "...",
+       "difficulty": 4,
+       "expires_at": ...,
+       "signature": "...",
+       "nonce": "..."
+     }'
+   ```
+
+3. **Watch the stream** receive state updates as the reducer processes button presses
+
+> **Note**: For development/testing, you can set `POW_BYPASS=true` in your `.env` file to skip proof-of-work verification.
 
 ## Design Notes
 

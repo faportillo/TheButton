@@ -21,13 +21,13 @@ class ReducerSettings(BaseSettings):
     # Core connections
     database_url: str = Field(..., alias="DATABASE_URL")
     kafka_bootstrap: str = Field(..., alias="KAFKA_BROKER_URL")
-    kafka_api_key: str = Field(None, alias="KAFKA_API_KEY")
-    kafka_api_secret: str = Field(None, alias="KAFKA_API_SECRET")
+    kafka_api_key: str | None = Field(None, alias="KAFKA_API_KEY")
+    kafka_api_secret: str | None = Field(None, alias="KAFKA_API_SECRET")
 
     # Kafka logical settings
     kafka_client_id: str = constants.REDUCER_KAFKA_CLIENT_ID
     kafka_group_id: str = constants.REDUCER_KAFKA_GROUP_ID
-    kafka_auto_offset_reset: str = "none"  # we want to fail if no offset
+    kafka_auto_offset_reset: str = "earliest"  # start from beginning if no committed offset
     kafka_enable_auto_commit: bool = False
     kafka_max_batch_size: int = constants.REDUCER_KAFKA_CONSUMER_BATCH_SIZE
 

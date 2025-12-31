@@ -21,11 +21,12 @@ def create_redis_connection() -> redis.Redis:
 
 
 def publish_state_update(r: redis.Redis, state: PersistedGlobalState):
+    """Publish state update matching PersistedGlobalState schema exactly."""
     msg = {
-        "type": "state_updated",
         "id": state.id,
         "last_applied_offset": state.last_applied_offset,
         "ruleshash": state.ruleshash,
+        "created_at": state.created_at.isoformat() if state.created_at else None,
     }
     r.publish(REDUCER_REDIS_STATE_UPDATE_CHANNEL, json.dumps(msg))
     logger.info(
