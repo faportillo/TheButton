@@ -151,6 +151,35 @@ services:
       start_period: 10s
 
   # ===========================================================================
+  # TheButton NGINX
+  # ===========================================================================
+  nginx:
+    build:
+      context: .
+      target: nginx
+    container_name: thebutton-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ===========================================================================
   # TheButton Reducer (Kafka Consumer)
   # ===========================================================================
   reducer:

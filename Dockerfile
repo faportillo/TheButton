@@ -4,10 +4,12 @@
 # Build targets:
 #   - api: FastAPI application server
 #   - reducer: Kafka consumer/state reducer
+#   - nginx: Nginx reverse proxy
 #
 # Usage:
 #   docker build --target api -t thebutton-api .
 #   docker build --target reducer -t thebutton-reducer .
+#   docker build --target nginx -t thebutton-nginx .
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -99,3 +101,32 @@ USER appuser
 
 # Run reducer main (uses .venv python via PATH)
 CMD ["python", "-m", "reducer.main"]
+
+# -----------------------------------------------------------------------------
+# Nginx stage: Reverse proxy
+# -----------------------------------------------------------------------------
+FROM nginx:stable-alpine AS nginx
+
+# Install wget for healthcheck
+RUN apk add --no-cache wget
+
+# Remove default nginx config
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Copy custom nginx configuration
+COPY nginx/nginx.conf /etc/nginx/nginx.conf
+
+# Create log directory and set permissions
+RUN mkdir -p /var/log/nginx && \
+    chown -R nginx:nginx /var/log/nginx && \
+    chown -R nginx:nginx /etc/nginx
+
+# Expose port 80
+EXPOSE 80
+
+# Health check (using sh to check if nginx responds)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost/health || exit 1
+
+# Run nginx
+CMD ["nginx", "-g", "daemon off;"]
