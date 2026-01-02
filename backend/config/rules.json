@@ -1,0 +1,16 @@
+{
+  "entropy_alpha": 0.1,
+  "max_rate_for_entropy": 10.0,
+
+  "calm_threshold": 0.25,
+  "hot_threshold": 0.5,
+  "chaos_threshold": 0.75,
+
+  "cooldown_calm_ms": 1000,
+  "cooldown_warm_ms": 2000,
+  "cooldown_chaos_ms": 5000,
+
+  "reveal_calm_ms": 5000,
+  "reveal_warm_ms": 10000,
+  "reveal_chaos_ms": 30000
+}
