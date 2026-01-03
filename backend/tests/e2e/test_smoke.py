@@ -6,6 +6,7 @@ Run with: make test-smoke
 """
 
 import pytest
+import hashlib
 from sqlalchemy import text
 
 
@@ -93,6 +94,53 @@ class TestInfrastructureSmoke:
         assert "press_button" in topics
 
 
+def solve_challenge(challenge_id: str, difficulty: int) -> str:
+    """
+    Solve a PoW challenge by finding a nonce.
+    
+    This is what the client needs to do:
+    - Try nonces until SHA256(challenge_id + ":" + nonce) has required leading zeros
+    """
+    nonce = 0
+    target = "0" * difficulty
+    
+    while True:
+        nonce_str = str(nonce)
+        message = f"{challenge_id}:{nonce_str}".encode()
+        hash_result = hashlib.sha256(message).hexdigest()
+        
+        if hash_result.startswith(target):
+            return nonce_str
+        
+        nonce += 1
+        # Safety limit to prevent infinite loops
+        if nonce > 1000000:
+            raise ValueError("Could not solve challenge within reasonable time")
+
+
+def get_valid_press_request(http_client) -> dict:
+    """Get a challenge, solve it, and return a valid press request body."""
+    # Get a challenge
+    challenge_response = http_client.get("/v1/challenge")
+    assert challenge_response.status_code == 200
+    challenge = challenge_response.json()
+    
+    # Solve the challenge
+    nonce = solve_challenge(
+        challenge["challenge_id"],
+        challenge["difficulty"]
+    )
+    
+    # Return valid press request
+    return {
+        "challenge_id": challenge["challenge_id"],
+        "difficulty": challenge["difficulty"],
+        "expires_at": challenge["expires_at"],
+        "signature": challenge["signature"],
+        "nonce": nonce,
+    }
+
+
 @pytest.mark.usefixtures("api_running")
 class TestAPISmoke:
     """Smoke tests for the API (requires API to be running)."""
@@ -131,9 +179,15 @@ class TestAPISmoke:
 
     def test_press_endpoint_exists(self, http_client):
         """Verify press endpoint is available (may fail if dependencies down)."""
-        response = http_client.post("/v1/events/press")
-        # 202 = success, 503 = kafka down, both are valid responses
-        assert response.status_code in (202, 503)
+        # Get a valid press request with PoW solution
+        press_request = get_valid_press_request(http_client)
+        response = http_client.post("/v1/events/press", json=press_request)
+        # 202 = success, 400 = invalid PoW (shouldn't happen with valid request),
+        # 503 = kafka down, 422 = validation error (shouldn't happen with valid request)
+        assert response.status_code in (202, 503), (
+            f"Unexpected status code {response.status_code}. "
+            f"Response: {response.text}"
+        )
 
     def test_current_state_endpoint_exists(self, http_client):
         """Verify current state endpoint is available."""

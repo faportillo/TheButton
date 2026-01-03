@@ -10,7 +10,7 @@ from api.schemas import (
 )
 import uuid
 import time
-from api.kafka import create_producer, send_message, flush_producer, KafkaException
+from shared.kafka import create_producer, send_message, flush_producer, KafkaException
 import shared.constants as constants
 from shared.models import PersistedGlobalState
 import logging
@@ -70,7 +70,7 @@ app.add_middleware(
     allow_headers=["*"],  # Allow all headers
 )
 
-producer = create_producer()
+producer = create_producer(settings.kafka_config)
 redis_client = create_redis_connection()
 
 

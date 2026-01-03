@@ -36,7 +36,7 @@ def client(mock_producer, mock_redis_client, monkeypatch):
     """Create a test client with mocked dependencies."""
     # Mock create_producer and create_redis_connection before import
     monkeypatch.setattr(
-        "api.kafka.create_producer", lambda config=None: mock_producer
+        "shared.kafka.create_producer", lambda config=None: mock_producer
     )
     monkeypatch.setattr(
         "api.redis.create_redis_connection", lambda: mock_redis_client
@@ -168,7 +168,7 @@ class TestPressButton:
     def test_returns_503_on_kafka_exception(self, client, mock_producer, monkeypatch, press_request_body):
         """Should return 503 when Kafka raises an exception."""
         import api.routes as routes_module
-        from api.kafka import KafkaException
+        from shared.kafka import KafkaException
 
         def mock_send(*args, **kwargs):
             raise KafkaException("Broker unavailable")

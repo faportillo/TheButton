@@ -2,7 +2,7 @@ import pytest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch, call
 import json
-import api.kafka as api_kafka
+import shared.kafka as shared_kafka
 
 
 class FakeMessage:
@@ -60,7 +60,7 @@ class TestDeliveryCallback:
         err = "Connection timeout"
         msg = FakeMessage()
 
-        api_kafka.delivery_callback(err, msg)
+        shared_kafka.delivery_callback(err, msg)
 
         assert "Message delivery failed: Connection timeout" in caplog.text
 
@@ -73,7 +73,7 @@ class TestDeliveryCallback:
         err = None
         msg = FakeMessage(topic="my-topic", partition=3)
 
-        api_kafka.delivery_callback(err, msg)
+        shared_kafka.delivery_callback(err, msg)
 
         assert "Message delivered to my-topic [3]" in caplog.text
 
@@ -90,14 +90,14 @@ class TestCreateProducer:
             created_with_config = config
             return FakeProducer(config)
 
-        monkeypatch.setattr(api_kafka, "Producer", fake_producer_init, raising=True)
+        monkeypatch.setattr(shared_kafka, "Producer", fake_producer_init, raising=True)
 
         config = {
             "bootstrap.servers": "localhost:9092",
             "client.id": "test-client",
         }
 
-        api_kafka.create_producer(config)
+        shared_kafka.create_producer(config)
 
         assert created_with_config == config
 
@@ -108,9 +108,9 @@ class TestCreateProducer:
         def fake_producer_init(config):
             return fake_producer
 
-        monkeypatch.setattr(api_kafka, "Producer", fake_producer_init, raising=True)
+        monkeypatch.setattr(shared_kafka, "Producer", fake_producer_init, raising=True)
 
-        result = api_kafka.create_producer({"bootstrap.servers": "localhost:9092"})
+        result = shared_kafka.create_producer({"bootstrap.servers": "localhost:9092"})
 
         assert result is fake_producer
 
@@ -121,10 +121,10 @@ class TestCreateProducer:
         caplog.set_level(logging.INFO)
 
         monkeypatch.setattr(
-            api_kafka, "Producer", lambda config: FakeProducer(config), raising=True
+            shared_kafka, "Producer", lambda config: FakeProducer(config), raising=True
         )
 
-        api_kafka.create_producer({"bootstrap.servers": "localhost:9092"})
+        shared_kafka.create_producer({"bootstrap.servers": "localhost:9092"})
 
         assert "Producer successfully created" in caplog.text
 
@@ -135,10 +135,10 @@ class TestCreateProducer:
         caplog.set_level(logging.DEBUG)
 
         monkeypatch.setattr(
-            api_kafka, "Producer", lambda config: FakeProducer(config), raising=True
+            shared_kafka, "Producer", lambda config: FakeProducer(config), raising=True
         )
 
-        api_kafka.create_producer({
+        shared_kafka.create_producer({
             "bootstrap.servers": "localhost:9092",
             "client.id": "my-producer",
         })
@@ -146,7 +146,9 @@ class TestCreateProducer:
         assert "Producer created with client.id: my-producer" in caplog.text
 
     def test_uses_default_settings_config(self, monkeypatch):
-        """Should use settings.kafka_config as default."""
+        """Should work with api.config.settings.kafka_config."""
+        from api.config import settings
+        
         created_with_config = None
 
         def fake_producer_init(config):
@@ -154,26 +156,15 @@ class TestCreateProducer:
             created_with_config = config
             return FakeProducer(config)
 
-        monkeypatch.setattr(api_kafka, "Producer", fake_producer_init, raising=True)
+        monkeypatch.setattr(shared_kafka, "Producer", fake_producer_init, raising=True)
 
-        # Mock settings with a specific kafka_config
-        fake_settings = SimpleNamespace(
-            kafka_config={
-                "bootstrap.servers": "default-broker:9092",
-                "client.id": "default-client",
-            }
-        )
-        monkeypatch.setattr(api_kafka, "settings", fake_settings, raising=True)
+        # Use api.config.settings.kafka_config
+        shared_kafka.create_producer(settings.kafka_config)
 
-        # Call without arguments - should use default from settings
-        # Note: Python evaluates default args at function definition time,
-        # so we need to call with explicit None or the current default
-        api_kafka.create_producer(fake_settings.kafka_config)
-
-        assert created_with_config == {
-            "bootstrap.servers": "default-broker:9092",
-            "client.id": "default-client",
-        }
+        # Verify the producer was created with the settings config
+        assert created_with_config == settings.kafka_config
+        assert "bootstrap.servers" in created_with_config
+        assert "client.id" in created_with_config
 
 
 class TestSendMessage:
@@ -183,7 +174,7 @@ class TestSendMessage:
         """Should produce message to the specified topic."""
         producer = FakeProducer()
 
-        api_kafka.send_message(
+        shared_kafka.send_message(
             producer=producer,
             value={"data": "test"},
             topic="custom-topic",
@@ -197,20 +188,20 @@ class TestSendMessage:
         producer = FakeProducer()
 
         # The default topic comes from constants.API_KAFKA_TOPIC
-        api_kafka.send_message(
+        shared_kafka.send_message(
             producer=producer,
             value={"data": "test"},
         )
 
         assert len(producer.produced_messages) == 1
-        assert producer.produced_messages[0]["topic"] == api_kafka.constants.API_KAFKA_TOPIC
+        assert producer.produced_messages[0]["topic"] == shared_kafka.constants.API_KAFKA_TOPIC
 
     def test_encodes_value_as_json_bytes(self):
         """Should encode value as JSON bytes."""
         producer = FakeProducer()
 
         value = {"id": 123, "name": "test", "active": True}
-        api_kafka.send_message(producer=producer, value=value)
+        shared_kafka.send_message(producer=producer, value=value)
 
         produced_value = producer.produced_messages[0]["value"]
         assert produced_value == json.dumps(value).encode("utf-8")
@@ -219,7 +210,7 @@ class TestSendMessage:
         """Should encode key as UTF-8 bytes when provided."""
         producer = FakeProducer()
 
-        api_kafka.send_message(
+        shared_kafka.send_message(
             producer=producer,
             value={"data": "test"},
             key="my-key",
@@ -232,7 +223,7 @@ class TestSendMessage:
         """Should set key to None when not provided."""
         producer = FakeProducer()
 
-        api_kafka.send_message(
+        shared_kafka.send_message(
             producer=producer,
             value={"data": "test"},
         )
@@ -244,16 +235,16 @@ class TestSendMessage:
         """Should set delivery_callback as the callback."""
         producer = FakeProducer()
 
-        api_kafka.send_message(producer=producer, value={"data": "test"})
+        shared_kafka.send_message(producer=producer, value={"data": "test"})
 
         callback = producer.produced_messages[0]["callback"]
-        assert callback is api_kafka.delivery_callback
+        assert callback is shared_kafka.delivery_callback
 
     def test_calls_poll_after_produce(self):
         """Should call poll(0) to trigger delivery callbacks."""
         producer = FakeProducer()
 
-        api_kafka.send_message(producer=producer, value={"data": "test"})
+        shared_kafka.send_message(producer=producer, value={"data": "test"})
 
         assert producer.poll_count == 1
 
@@ -261,7 +252,7 @@ class TestSendMessage:
         """Should properly encode unicode characters in key."""
         producer = FakeProducer()
 
-        api_kafka.send_message(
+        shared_kafka.send_message(
             producer=producer,
             value={"data": "test"},
             key="キー",  # Japanese for "key"
@@ -279,7 +270,7 @@ class TestSendMessage:
             "items": [1, 2, 3],
             "metadata": {"nested": {"deep": True}},
         }
-        api_kafka.send_message(producer=producer, value=value)
+        shared_kafka.send_message(producer=producer, value=value)
 
         produced_value = producer.produced_messages[0]["value"]
         assert json.loads(produced_value.decode("utf-8")) == value
@@ -292,7 +283,7 @@ class TestFlushProducer:
         """Should call flush with the specified timeout."""
         producer = FakeProducer()
 
-        api_kafka.flush_producer(producer, timeout=5.0)
+        shared_kafka.flush_producer(producer, timeout=5.0)
 
         assert producer.flush_count == 1
         assert producer.flush_timeout == 5.0
@@ -301,7 +292,7 @@ class TestFlushProducer:
         """Should use 10.0 seconds as default timeout."""
         producer = FakeProducer()
 
-        api_kafka.flush_producer(producer)
+        shared_kafka.flush_producer(producer)
 
         assert producer.flush_timeout == 10.0
 
@@ -310,7 +301,7 @@ class TestFlushProducer:
         producer = FakeProducer()
         producer.remaining_after_flush = 5
 
-        result = api_kafka.flush_producer(producer)
+        result = shared_kafka.flush_producer(producer)
 
         assert result == 5
 
@@ -319,7 +310,7 @@ class TestFlushProducer:
         producer = FakeProducer()
         producer.remaining_after_flush = 0
 
-        result = api_kafka.flush_producer(producer)
+        result = shared_kafka.flush_producer(producer)
 
         assert result == 0
 
@@ -332,7 +323,7 @@ class TestFlushProducer:
         producer = FakeProducer()
         producer.remaining_after_flush = 3
 
-        api_kafka.flush_producer(producer)
+        shared_kafka.flush_producer(producer)
 
         assert "3 messages still in queue after flush" in caplog.text
 
@@ -345,7 +336,7 @@ class TestFlushProducer:
         producer = FakeProducer()
         producer.remaining_after_flush = 0
 
-        api_kafka.flush_producer(producer)
+        shared_kafka.flush_producer(producer)
 
         assert "messages still in queue" not in caplog.text
 

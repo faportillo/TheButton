@@ -1,5 +1,4 @@
 from confluent_kafka import Producer, KafkaException
-from api.config import settings
 import logging
 from typing import Dict, Union, Optional, Any
 import shared.constants as constants
@@ -17,7 +16,7 @@ def delivery_callback(err, msg):
 
 
 def create_producer(
-    config: Dict[str, Union[str, bool]] = settings.kafka_config,
+    config: Dict[str, Union[str, bool]]
 ) -> Producer:
     producer = Producer(config)
     logger.info("Producer successfully created")
