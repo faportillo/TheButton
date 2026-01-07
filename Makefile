@@ -1,475 +1,169 @@
 # =============================================================================
-# TheButton - Makefile
+# TheButton - Root Makefile
 # =============================================================================
+# Orchestrates both frontend and backend setup and execution
 # Run `make help` to see all available targets
 # =============================================================================
 
-.PHONY: help start start-full stop restart restart-full status logs logs-apps \
-        test test-unit test-integration test-contract test-api test-reducer \
-        test-e2e test-smoke test-coverage test-verbose test-failed lint format clean \
-        install dev-install run-api run-reducer \
-        docker-up docker-up-infra docker-up-apps docker-up-api docker-up-reducer \
-        docker-up-full docker-up-all docker-down docker-build docker-build-api docker-build-reducer \
-        docker-logs docker-logs-api docker-logs-reducer docker-logs-apps \
-        docker-restart-api docker-restart-reducer docker-restart-apps docker-rebuild \
-        restart-api restart-reducer restart-kafka restart-redis restart-postgres restart-db \
-        restart-apps restart-infra restart-all rebuild-api rebuild-reducer rebuild-apps \
-        db-migrate db-upgrade db-downgrade db-current db-history db-heads db-seed-rules
+.PHONY: help setup setup-backend setup-frontend start start-backend start-frontend \
+        start-full stop stop-frontend restart status logs clean install dev-install \
+        run-api run-reducer run-frontend test
 
-# Default Python and Poetry commands
-PYTHON := poetry run python
-PYTEST := poetry run pytest
-BLACK := poetry run black
-ALEMBIC := poetry run alembic
+# Directories
+BACKEND_DIR := backend
+FRONTEND_DIR := frontend
 
-# Test directories
-TEST_DIR := tests
-API_UNIT_TESTS := tests/api/unit
-API_INTEGRATION_TESTS := tests/api/integration
-API_CONTRACT_TESTS := tests/api/contract
-REDUCER_UNIT_TESTS := tests/reducer/unit
-REDUCER_INTEGRATION_TESTS := tests/reducer/integration
-E2E_TESTS := tests/e2e
+# Frontend server port
+FRONTEND_PORT := 3000
+
+# Python HTTP server command (Python 3)
+PYTHON_HTTP_SERVER := python3 -m http.server
 
 # =============================================================================
 # Quick Start
 # =============================================================================
 
-start: ## Start infrastructure (Docker) + run migrations
-	@echo "Starting TheButton infrastructure..."
-	@docker compose up -d postgres redis kafka
-	@echo "Waiting for services to be healthy..."
-	@sleep 3
-	@$(ALEMBIC) upgrade head
-	@echo "✓ Infrastructure running. Database migrated."
-	@echo "Run 'make run-api' and 'make run-reducer' to start apps locally,"
-	@echo "or 'make start-full' to run everything in Docker."
-
-start-full: ## Start everything in Docker (infra + api + reducer)
-	@echo "Starting TheButton (full stack)..."
-	@docker compose up -d --build
-	@echo "Waiting for infrastructure to be healthy..."
-	@sleep 5
-	@docker compose exec -T api python -m alembic upgrade head 2>/dev/null || $(ALEMBIC) upgrade head
-	@echo "✓ All services running in Docker."
-	@echo "  API: http://localhost:8000"
-	@echo "  Health: http://localhost:8000/health"
-
-stop: ## Stop all services
-	@echo "Stopping TheButton..."
-	@docker compose --profile tools down
-	@echo "✓ All services stopped."
-
-restart: stop start ## Restart infrastructure services
-
-restart-full: stop start-full ## Restart full stack (rebuild containers)
-
-status: ## Show service status
-	@docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
-
-logs: ## Follow logs for all services
-	@docker compose logs -f
-
-logs-apps: ## Follow logs for API and reducer only
-	@docker compose logs -f api reducer
-
-# =============================================================================
-# Help
-# =============================================================================
-
 help: ## Show this help message
-	@echo "TheButton - Available Commands"
-	@echo "=============================="
+	@echo "TheButton - Root Makefile"
+	@echo "=========================="
 	@echo ""
 	@echo "Usage: make [target]"
 	@echo ""
-	@echo "Test Targets:"
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
+	@echo ""
+	@echo "Backend-specific commands:"
+	@echo "  cd backend && make help"
+	@echo ""
 
-# =============================================================================
-# All Tests
-# =============================================================================
+setup: setup-backend setup-frontend ## Set up both frontend and backend
 
-test: ## Run all tests
-	$(PYTEST) -v
+setup-backend: ## Set up backend dependencies (Poetry install)
+	@echo "Setting up backend dependencies..."
+	@cd $(BACKEND_DIR) && poetry install
+	@echo "✓ Backend dependencies installed"
 
-test-all: test ## Alias for 'test'
+setup-frontend: ## Verify frontend files exist (no build needed for static files)
+	@echo "Checking frontend files..."
+	@test -f $(FRONTEND_DIR)/index.html || (echo "Error: frontend/index.html not found" && exit 1)
+	@test -f $(FRONTEND_DIR)/main.js || (echo "Error: frontend/main.js not found" && exit 1)
+	@test -f $(FRONTEND_DIR)/styles.css || (echo "Error: frontend/styles.css not found" && exit 1)
+	@echo "✓ Frontend files verified"
 
-test-fast: ## Run all tests without integration tests (faster)
-	$(PYTEST) -v --ignore=$(API_INTEGRATION_TESTS) --ignore=$(REDUCER_INTEGRATION_TESTS)
+start: start-backend start-frontend ## Start both backend and frontend locally
 
-# =============================================================================
-# Unit Tests
-# =============================================================================
+start-backend: ## Start backend infrastructure and services locally
+	@echo "Starting backend infrastructure..."
+	@cd $(BACKEND_DIR) && $(MAKE) start
+	@echo ""
+	@echo "✓ Backend infrastructure running"
+	@echo "  Run 'make run-api' and 'make run-reducer' in separate terminals,"
+	@echo "  or use 'make start-full' to run everything in Docker"
 
-test-unit: ## Run all unit tests
-	$(PYTEST) $(API_UNIT_TESTS) $(REDUCER_UNIT_TESTS) -v
+start-frontend: ## Start frontend development server
+	@if lsof -Pi :$(FRONTEND_PORT) -sTCP:LISTEN -t >/dev/null 2>&1 ; then \
+		echo "Warning: Port $(FRONTEND_PORT) is already in use"; \
+		echo "  Use 'make stop-frontend' to stop the existing server, or choose a different port"; \
+		exit 1; \
+	fi
+	@echo "Starting frontend server on http://localhost:$(FRONTEND_PORT)..."
+	@cd $(FRONTEND_DIR) && $(PYTHON_HTTP_SERVER) $(FRONTEND_PORT) > /tmp/thebutton-frontend.log 2>&1 & \
+	echo $$! > /tmp/thebutton-frontend.pid
+	@sleep 1
+	@if [ -f /tmp/thebutton-frontend.pid ] && kill -0 $$(cat /tmp/thebutton-frontend.pid) 2>/dev/null; then \
+		echo "✓ Frontend server started at http://localhost:$(FRONTEND_PORT)"; \
+		echo "  PID: $$(cat /tmp/thebutton-frontend.pid)"; \
+		echo "  Logs: /tmp/thebutton-frontend.log"; \
+		echo "  Use 'make stop-frontend' to stop it"; \
+	else \
+		echo "✗ Failed to start frontend server. Check /tmp/thebutton-frontend.log for errors."; \
+		rm -f /tmp/thebutton-frontend.pid; \
+		exit 1; \
+	fi
 
-test-unit-api: ## Run API unit tests only
-	$(PYTEST) $(API_UNIT_TESTS) -v
+stop-frontend: ## Stop frontend development server
+	@if [ -f /tmp/thebutton-frontend.pid ]; then \
+		PID=$$(cat /tmp/thebutton-frontend.pid); \
+		if kill $$PID 2>/dev/null; then \
+			rm /tmp/thebutton-frontend.pid; \
+			echo "✓ Frontend server stopped (PID: $$PID)"; \
+		else \
+			rm /tmp/thebutton-frontend.pid; \
+			echo "Frontend server process not found. PID file removed."; \
+		fi; \
+	else \
+		echo "Frontend server PID file not found. It may already be stopped."; \
+		echo "You can also check for processes on port $(FRONTEND_PORT):"; \
+		echo "  lsof -i :$(FRONTEND_PORT)"; \
+	fi
 
-test-unit-reducer: ## Run reducer unit tests only
-	$(PYTEST) $(REDUCER_UNIT_TESTS) -v
+start-full: ## Start everything in Docker (backend + frontend via nginx)
+	@echo "Starting full stack in Docker..."
+	@cd $(BACKEND_DIR) && $(MAKE) start-full
+	@echo ""
+	@echo "✓ Full stack running in Docker"
+	@echo "  API: http://localhost:8000"
+	@echo "  Nginx (with frontend): http://localhost:8080"
+	@echo "  Health: http://localhost:8000/health"
 
-# =============================================================================
-# Integration Tests
-# =============================================================================
+stop: stop-frontend ## Stop all services (backend + frontend)
+	@echo "Stopping backend services..."
+	@cd $(BACKEND_DIR) && $(MAKE) stop
+	@echo "✓ All services stopped"
 
-test-integration: ## Run all integration tests (requires Docker)
-	$(PYTEST) $(API_INTEGRATION_TESTS) $(REDUCER_INTEGRATION_TESTS) -v
+restart: stop start-full ## Restart full stack
 
-test-integration-api: ## Run API integration tests only
-	$(PYTEST) $(API_INTEGRATION_TESTS) -v
+status: ## Show service status
+	@echo "Backend services:"
+	@cd $(BACKEND_DIR) && $(MAKE) status
+	@echo ""
+	@echo "Frontend: Check if process is running on port $(FRONTEND_PORT)"
 
-test-integration-reducer: ## Run reducer integration tests only
-	$(PYTEST) $(REDUCER_INTEGRATION_TESTS) -v
-
-test-integration-redis: ## Run Redis integration tests only
-	$(PYTEST) $(API_INTEGRATION_TESTS)/test_redis_integration.py -v
-
-test-integration-kafka: ## Run Kafka integration tests only (requires Docker)
-	$(PYTEST) $(API_INTEGRATION_TESTS)/test_kafka_integration.py -v
-
-# =============================================================================
-# Contract Tests
-# =============================================================================
-
-test-contract: ## Run contract tests
-	$(PYTEST) $(API_CONTRACT_TESTS) -v
-
-# =============================================================================
-# E2E & Smoke Tests (requires Docker services)
-# =============================================================================
-
-test-smoke: ## Run smoke tests (quick health checks, requires 'make start')
-	$(PYTEST) $(E2E_TESTS)/test_smoke.py -v
-
-test-e2e: ## Run full e2e tests (requires 'make start' + API running)
-	$(PYTEST) $(E2E_TESTS) -v
-
-test-e2e-infra: ## Run e2e infrastructure tests only (no API needed)
-	$(PYTEST) $(E2E_TESTS)/test_smoke.py::TestInfrastructureSmoke -v
-
-# =============================================================================
-# By Module
-# =============================================================================
-
-test-api: ## Run all API tests (unit + integration + contract)
-	$(PYTEST) tests/api -v
-
-test-reducer: ## Run all reducer tests
-	$(PYTEST) tests/reducer -v
-
-# =============================================================================
-# Specific Test Patterns
-# =============================================================================
-
-# Usage: make test-match PATTERN="test_health"
-test-match: ## Run tests matching a pattern (use PATTERN=...)
-	$(PYTEST) -v -k "$(PATTERN)"
-
-# Usage: make test-file FILE="tests/api/unit/test_health.py"
-test-file: ## Run a specific test file (use FILE=...)
-	$(PYTEST) $(FILE) -v
-
-# Usage: make test-func FUNC="test_returns_healthy"
-test-func: ## Run tests matching a function name (use FUNC=...)
-	$(PYTEST) -v -k "$(FUNC)"
-
-# =============================================================================
-# Test Options
-# =============================================================================
-
-test-verbose: ## Run all tests with extra verbose output
-	$(PYTEST) -vv --tb=long
-
-test-debug: ## Run tests with debug output (print statements visible)
-	$(PYTEST) -v -s
-
-test-failed: ## Run only previously failed tests
-	$(PYTEST) --lf -v
-
-test-failed-first: ## Run failed tests first, then the rest
-	$(PYTEST) --ff -v
-
-test-coverage: ## Run tests with coverage report
-	$(PYTEST) --cov=src --cov-report=term-missing --cov-report=html -v
-	@echo "\nCoverage HTML report: htmlcov/index.html"
-
-test-coverage-unit: ## Run unit tests with coverage
-	$(PYTEST) $(API_UNIT_TESTS) $(REDUCER_UNIT_TESTS) --cov=src --cov-report=term-missing -v
+logs: ## Follow logs (use SERVICE=api to filter)
+	@cd $(BACKEND_DIR) && $(MAKE) logs SERVICE=$(SERVICE)
 
 # =============================================================================
 # Development
 # =============================================================================
 
-install: ## Install production dependencies
-	poetry install --only main
+install: setup ## Install all dependencies (alias for setup)
 
-dev-install: ## Install all dependencies (including dev)
-	poetry install
+dev-install: setup ## Install all dependencies including dev (alias for setup)
 
-setup-env: ## Copy example.env to .env (if .env doesn't exist)
-	@if [ ! -f .env ]; then \
-		cp example.env .env; \
-		echo "Created .env from example.env"; \
-	else \
-		echo ".env already exists, skipping"; \
-	fi
+run-api: ## Run API locally (requires 'make start-backend' first)
+	@echo "Starting API server..."
+	@cd $(BACKEND_DIR) && $(MAKE) run-api
 
-run-api: ## Run API locally (requires 'make start' first)
-	$(PYTHON) -m uvicorn api.routes:app --reload --host 0.0.0.0 --port 8000
+run-reducer: ## Run reducer locally (requires 'make start-backend' first)
+	@echo "Starting reducer..."
+	@cd $(BACKEND_DIR) && $(MAKE) run-reducer
 
-run-reducer: ## Run reducer locally (requires 'make start' first)
-	$(PYTHON) -m reducer.main
+run-frontend: start-frontend ## Run frontend server (alias for start-frontend)
 
-lint: ## Run linter checks
-	$(BLACK) --check src tests
+# =============================================================================
+# Testing
+# =============================================================================
 
-format: ## Format code with black
-	$(BLACK) src tests
+test: ## Run all backend tests
+	@cd $(BACKEND_DIR) && $(MAKE) test
+
+test-unit: ## Run unit tests only
+	@cd $(BACKEND_DIR) && $(MAKE) test-unit
+
+test-integration: ## Run integration tests (requires Docker)
+	@cd $(BACKEND_DIR) && $(MAKE) test-integration
+
+test-e2e: ## Run e2e tests (requires 'make start-full')
+	@cd $(BACKEND_DIR) && $(MAKE) test-e2e
+
+test-coverage: ## Run tests with coverage report
+	@cd $(BACKEND_DIR) && $(MAKE) test-coverage
+
+# =============================================================================
+# Cleanup
+# =============================================================================
 
 clean: ## Clean up cache and build artifacts
-	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name "htmlcov" -exec rm -rf {} + 2>/dev/null || true
-	find . -type f -name "*.pyc" -delete 2>/dev/null || true
-	find . -type f -name ".coverage" -delete 2>/dev/null || true
-
-# =============================================================================
-# Docker - Infrastructure
-# =============================================================================
-
-docker-up: ## Start infrastructure services (postgres, redis, kafka)
-	docker compose up -d postgres redis kafka
-
-docker-up-infra: docker-up ## Alias for docker-up
-
-docker-down: ## Stop all Docker services
-	docker compose --profile tools down
-
-docker-logs: ## Follow logs for all services
-	docker compose logs -f
-
-docker-logs-kafka: ## Follow Kafka logs
-	docker compose logs -f kafka
-
-docker-logs-redis: ## Follow Redis logs
-	docker compose logs -f redis
-
-docker-logs-db: ## Follow PostgreSQL logs
-	docker compose logs -f postgres
-
-docker-ps: ## Show running containers
-	docker compose ps
-
-docker-clean: ## Stop and remove all containers, volumes, and networks
-	docker compose --profile tools down -v --remove-orphans
-
-docker-restart: ## Restart all services
-	docker compose restart
-
-docker-health: ## Check health of all services
-	@echo "Checking service health..."
-	@docker compose ps --format "table {{.Name}}\t{{.Status}}"
-
-# =============================================================================
-# Docker - Application Services
-# =============================================================================
-
-docker-build: ## Build API and reducer images
-	docker compose build api reducer
-
-docker-build-api: ## Build API image only
-	docker compose build api
-
-docker-build-reducer: ## Build reducer image only
-	docker compose build reducer
-
-docker-up-apps: ## Start API and reducer containers (requires infra running)
-	docker compose up -d api reducer
-
-docker-up-api: ## Start API container only
-	docker compose up -d api
-
-docker-up-reducer: ## Start reducer container only
-	docker compose up -d reducer
-
-docker-up-full: ## Start all services (infra + apps)
-	docker compose up -d
-
-docker-up-all: ## Start all services including admin UIs
-	docker compose --profile tools up -d
-
-docker-logs-api: ## Follow API logs
-	docker compose logs -f api
-
-docker-logs-reducer: ## Follow reducer logs
-	docker compose logs -f reducer
-
-docker-logs-apps: ## Follow API and reducer logs
-	docker compose logs -f api reducer
-
-docker-restart-api: ## Restart API container
-	docker compose restart api
-
-docker-restart-reducer: ## Restart reducer container
-	docker compose restart reducer
-
-docker-restart-apps: ## Restart API and reducer containers
-	docker compose restart api reducer
-
-docker-rebuild: ## Rebuild and restart API and reducer
-	docker compose up -d --build api reducer
-
-# =============================================================================
-# Quick Restart Shortcuts
-# =============================================================================
-# Usage: make restart-<service> or make rebuild-<service>
-# Examples:
-#   make restart-api       - Restart API container
-#   make restart-reducer   - Restart reducer container  
-#   make restart-kafka     - Restart Kafka
-#   make rebuild-api       - Rebuild and restart API
-
-restart-api: ## Restart API container (shortcut)
-	@echo "Restarting API..."
-	@docker compose restart api
-	@echo "✓ API restarted"
-
-restart-reducer: ## Restart reducer container (shortcut)
-	@echo "Restarting reducer..."
-	@docker compose restart reducer
-	@echo "✓ Reducer restarted"
-
-restart-kafka: ## Restart Kafka container
-	@echo "Restarting Kafka..."
-	@docker compose restart kafka
-	@echo "✓ Kafka restarted"
-
-restart-redis: ## Restart Redis container
-	@echo "Restarting Redis..."
-	@docker compose restart redis
-	@echo "✓ Redis restarted"
-
-restart-postgres: ## Restart PostgreSQL container
-	@echo "Restarting PostgreSQL..."
-	@docker compose restart postgres
-	@echo "✓ PostgreSQL restarted"
-
-restart-db: restart-postgres ## Alias for restart-postgres
-
-restart-apps: ## Restart API and reducer containers
-	@echo "Restarting API and reducer..."
-	@docker compose restart api reducer
-	@echo "✓ Apps restarted"
-
-restart-infra: ## Restart infrastructure (postgres, redis, kafka)
-	@echo "Restarting infrastructure..."
-	@docker compose restart postgres redis kafka
-	@echo "✓ Infrastructure restarted"
-
-restart-all: ## Restart all containers
-	@echo "Restarting all services..."
-	@docker compose restart
-	@echo "✓ All services restarted"
-
-rebuild-api: ## Rebuild and restart API container
-	@echo "Rebuilding API..."
-	@docker compose up -d --build api
-	@echo "✓ API rebuilt and restarted"
-
-rebuild-reducer: ## Rebuild and restart reducer container
-	@echo "Rebuilding reducer..."
-	@docker compose up -d --build reducer
-	@echo "✓ Reducer rebuilt and restarted"
-
-rebuild-apps: ## Rebuild and restart API and reducer
-	@echo "Rebuilding apps..."
-	@docker compose up -d --build api reducer
-	@echo "✓ Apps rebuilt and restarted"
-
-# =============================================================================
-# Database Migrations (Alembic)
-# =============================================================================
-
-db-migrate: ## Create a new migration (use MSG="description")
-	$(ALEMBIC) revision --autogenerate -m "$(MSG)"
-
-db-upgrade: ## Apply all pending migrations
-	$(ALEMBIC) upgrade head
-
-db-downgrade: ## Rollback the last migration
-	$(ALEMBIC) downgrade -1
-
-db-current: ## Show current migration revision
-	$(ALEMBIC) current
-
-db-history: ## Show migration history
-	$(ALEMBIC) history --verbose
-
-db-heads: ## Show current head revisions
-	$(ALEMBIC) heads
-
-db-stamp: ## Stamp the database with a revision without running migrations (use REV="revision")
-	$(ALEMBIC) stamp $(REV)
-
-db-reset: ## Reset database to clean state (WARNING: destroys data)
-	$(ALEMBIC) downgrade base
-
-db-seed-rules: ## Seed the database with initial rules from config/rules.json
-	PYTHONPATH=src $(PYTHON) -m scripts.seed_rules
-
-db-seed-rules-force: ## Force re-seed rules even if hash exists
-	PYTHONPATH=src $(PYTHON) -m scripts.seed_rules --force
-
-# =============================================================================
-# Quick Reference
-# =============================================================================
-
-# Quick Start:
-#   make start                   - Start infra (Docker) + run migrations
-#   make start-full              - Start everything in Docker (infra + apps)
-#   make stop                    - Stop all services
-#   make restart                 - Restart infrastructure
-#   make restart-full            - Restart full stack
-#   make status                  - Show service status
-#   make logs                    - Follow all logs
-#
-# Running Locally (after 'make start'):
-#   make run-api                 - Run API locally with hot reload
-#   make run-reducer             - Run reducer locally
-#
-# Docker App Services:
-#   make docker-build            - Build API and reducer images
-#   make docker-up-apps          - Start API and reducer in Docker
-#   make docker-up-full          - Start infra + apps in Docker
-#   make docker-logs-apps        - Follow API and reducer logs
-#   make docker-rebuild          - Rebuild and restart apps
-#
-# Quick Restart (shortcuts):
-#   make restart-api             - Restart API container
-#   make restart-reducer         - Restart reducer container
-#   make restart-kafka           - Restart Kafka container
-#   make restart-redis           - Restart Redis container
-#   make restart-postgres        - Restart PostgreSQL container
-#   make restart-apps            - Restart API and reducer
-#   make restart-infra           - Restart postgres, redis, kafka
-#   make restart-all             - Restart all containers
-#   make rebuild-api             - Rebuild and restart API
-#   make rebuild-reducer         - Rebuild and restart reducer
-#   make rebuild-apps            - Rebuild and restart API + reducer
-#
-# Testing:
-#   make test                    - Run all tests
-#   make test-unit               - Run only unit tests
-#   make test-integration        - Run only integration tests
-#   make test-match PATTERN="health"  - Run tests with "health" in name
-#   make test-coverage           - Run with coverage report
-#
-# Database:
-#   make db-migrate MSG="add users table"  - Create a new migration
-#   make db-upgrade              - Apply all pending migrations
-#   make db-downgrade            - Rollback last migration
-#   make db-seed-rules           - Seed initial rules from config/rules.json
+	@echo "Cleaning backend..."
+	@cd $(BACKEND_DIR) && $(MAKE) clean
+	@echo "✓ Cleanup complete"
 

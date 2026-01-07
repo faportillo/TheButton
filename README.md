@@ -1,310 +1,234 @@
 # The Button
 
-A backend-focused implementation of a global "button game" inspired by Reddit's _The Button_. This project demonstrates clean event-driven architecture using Kafka, PostgreSQL, Redis, and FastAPI—with a pure domain core for game logic.
+A full-stack implementation of a global "button game" inspired by Reddit's _The Button_. This project demonstrates event-driven architecture with real-time updates, featuring a modern web frontend and a robust backend built with Kafka, PostgreSQL, Redis, and FastAPI.
 
-## Overview
+## 🎮 Overview
 
-The Button implements a **single global button** shared by all users worldwide. When users press the button:
+**The Button** is a collaborative web game where users worldwide share a single global button. When pressed, the button's behavior changes dynamically based on collective user activity, creating an emergent gameplay experience driven by real-time interactions.
 
-1. The API accepts press events and produces them to Kafka
-2. A reducer service consumes events, applies game rules, and updates global state
-3. State changes are persisted to PostgreSQL (source of truth)
-4. Redis pub/sub notifies connected clients via Server-Sent Events (SSE)
+### How It Works
 
-The project exists to practice **good backend code design**: clear separation between API, reducer, shared domain, and infrastructure layers—with particular emphasis on Kafka consumer patterns, manual offset management, and a pure domain core free of framework dependencies.
+1. **User presses the button** → Frontend solves a proof-of-work challenge and sends the press event
+2. **API accepts the event** → Validates proof-of-work, applies rate limiting, and produces to Kafka
+3. **Reducer processes events** → Consumes from Kafka in batches, applies game rules, and updates global state
+4. **State persisted** → New state snapshot saved to PostgreSQL (source of truth)
+5. **Real-time notifications** → Redis pub/sub broadcasts state changes
+6. **Clients updated** → Frontend receives updates via Server-Sent Events (SSE)
 
-## Architecture
+The game features dynamic phases (CALM → WARM → HOT → CHAOS) that respond to user activity patterns, creating an engaging collaborative experience.
+
+## 🏗️ Architecture
 
 ```
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Client    │───▶│  FastAPI    │───▶│    Kafka    │───▶│   Reducer   │
-│             │    │    API      │    │   Topic     │    │   Service   │
+│   Browser   │───▶│  FastAPI    │───▶│    Kafka    │───▶│   Reducer   │
+│  Frontend   │    │    API      │    │   Topic     │    │   Service   │
+│  (Port 3000)│    │ (Port 8000) │    │  (Port 9092)│    │             │
 └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
        ▲                                                        │
        │                                                        ▼
        │           ┌─────────────┐                      ┌─────────────┐
        └───────────│    Redis    │◀─────────────────────│  PostgreSQL │
-         (SSE)     │   Pub/Sub   │    (notify after     │  (append-   │
-                   └─────────────┘     DB write)        │  only log)  │
-                                                        └─────────────┘
+         (SSE)     │   Pub/Sub   │    (notify after     │  (Port 5432)│
+                   │  (Port 6379)│     DB write)        │             │
+                   └─────────────┘                      └─────────────┘
 ```
 
-### Data Flow
+### Key Design Principles
 
-1. **HTTP Press** → Client calls `POST /v1/events/press`
-2. **Kafka Produce** → API generates `request_id`, produces message to `press_button` topic
-3. **Kafka Consume** → Reducer polls messages in batches
-4. **Apply Rules** → Pure `apply_batch()` function computes new `GlobalState` from events
-5. **DB Write** → New state snapshot appended to `global_states` table
-6. **Redis Notify** → Reducer publishes to `state_updates:v1` channel
-7. **Kafka Commit** → Offsets committed **only after** successful DB write
-8. **SSE Push** → API streams updates to connected clients
+- **Event-Driven**: All button presses flow through Kafka for scalability and reliability
+- **Pure Domain Logic**: Game rules are framework-agnostic and easily testable
+- **Manual Offset Management**: Kafka offsets committed only after successful database writes
+- **Redis as Notification Layer**: Pub/sub is best-effort; PostgreSQL is the source of truth
+- **Real-Time Updates**: Server-Sent Events (SSE) for live state synchronization
 
-### Key Invariants
+## ✨ Features
 
-- **DB before Kafka commit**: Offsets are never committed until the state is persisted
-- **Redis as invalidation only**: Pub/sub is best-effort; PostgreSQL is the source of truth
-- **Pure domain logic**: The rules engine has no dependencies on FastAPI, SQLAlchemy, or Kafka
+### Frontend
+- **Interactive UI**: Clean, responsive interface with visual phase indicators
+- **Real-Time Updates**: Live state synchronization via Server-Sent Events
+- **Proof-of-Work**: Client-side computation to prevent spam
+- **Visual Feedback**: Dynamic background colors and animations based on game phase
+- **Error Handling**: Graceful degradation and user-friendly error messages
 
-## Game Mechanics
+### Backend
+- **Rate Limiting**: Per-IP rate limiting to prevent abuse
+- **Proof-of-Work Verification**: Cryptographic challenge-response system
+- **Health Checks**: Comprehensive health endpoints for monitoring
+- **Batch Processing**: Efficient Kafka consumer with configurable batch sizes
+- **Database Migrations**: Alembic for schema management
+- **Comprehensive Testing**: Unit, integration, and E2E test suites
 
-The button responds to collective user activity through a dynamic rules engine. Game rules are stored as JSON in the `rulesets` table and loaded by the reducer at startup.
-
-**The specific mechanics are intentionally undocumented**—discovering how the button behaves is part of the game.
-
-## Tech Stack
+## 🛠️ Tech Stack
 
 | Component       | Technology                     |
 | --------------- | ------------------------------ |
-| Language        | Python 3.13                    |
-| API Framework   | FastAPI                        |
-| Message Broker  | Apache Kafka (confluent-kafka) |
-| Database        | PostgreSQL 16                  |
-| Cache/Pub-Sub   | Redis 7                        |
-| ORM             | SQLAlchemy 2.0                 |
-| Settings        | Pydantic Settings              |
-| SSE             | sse-starlette                  |
-| Package Manager | Poetry                         |
-| Containers      | Docker Compose                 |
+| **Frontend**    | Vanilla JavaScript (ES Modules) |
+| **Backend**     | Python 3.13                     |
+| **API Framework** | FastAPI                        |
+| **Message Broker** | Apache Kafka (confluent-kafka) |
+| **Database**    | PostgreSQL 16                  |
+| **Cache/Pub-Sub** | Redis 7                        |
+| **ORM**         | SQLAlchemy 2.0                 |
+| **Settings**    | Pydantic Settings              |
+| **SSE**         | sse-starlette                  |
+| **Package Manager** | Poetry                         |
+| **Containers**  | Docker Compose                 |
+| **Reverse Proxy** | Nginx                         |
 
-## Project Structure
-
-```
-src/
-├── api/                    # FastAPI application
-│   ├── __init__.py
-│   ├── config.py           # APISettings (Pydantic BaseSettings)
-│   ├── contracts.py        # Message schemas for inter-service communication
-│   ├── health.py           # Health check utilities (Redis, Kafka, DB)
-│   ├── kafka.py            # Kafka producer wrapper
-│   ├── redis.py            # Redis connection and pub/sub listener
-│   ├── routes.py           # FastAPI app and route handlers
-│   ├── schemas.py          # API response models (Pydantic)
-│   └── state.py            # Database queries for global state
-│
-├── reducer/                # Kafka consumer service
-│   ├── __init__.py
-│   ├── config.py           # ReducerSettings (Pydantic BaseSettings)
-│   ├── consumer.py         # Kafka consumer wrapper
-│   ├── main.py             # Consumer loop with backoff/retry
-│   ├── notify.py           # Redis publisher for state updates
-│   ├── updater.py          # apply_event / apply_batch (pure functions)
-│   ├── writer.py           # Database write operations
-│   └── rules/
-│       ├── logic.py        # Pure game logic (the secret sauce)
-│       └── retriever.py    # Load rulesets from database
-│
-├── shared/                 # Shared domain layer
-│   ├── __init__.py
-│   ├── constants.py        # Kafka topics, Redis channels, consumer group
-│   └── models.py           # Domain entities + SQLAlchemy ORM models
-│
-├── error.py                # (Reserved for custom exceptions)
-└── logger.py               # (Reserved for logging configuration)
-
-tests/
-├── api/
-│   ├── conftest.py         # API test fixtures
-│   ├── contract/           # Message contract tests
-│   ├── integration/        # Redis, Kafka, state integration tests
-│   └── unit/               # Unit tests for routes, kafka, redis, health
-│
-└── reducer/
-    ├── conftest.py         # Reducer test fixtures
-    ├── integration/        # Writer, retriever SQLite integration tests
-    └── unit/               # Unit tests for consumer, logic, updater, notify
-```
-
-## Configuration
-
-### Environment Variables
-
-Copy `example.env` to `.env` and configure:
-
-```bash
-cp example.env .env
-```
-
-#### Required Variables
-
-| Variable           | Description                  | Example                                                     |
-| ------------------ | ---------------------------- | ----------------------------------------------------------- |
-| `DATABASE_URL`     | PostgreSQL connection string | `postgresql://thebutton:thebutton@localhost:5432/thebutton` |
-| `KAFKA_BROKER_URL` | Kafka bootstrap servers      | `localhost:9092`                                            |
-| `REDIS_HOST`       | Redis hostname               | `localhost`                                                 |
-| `REDIS_PORT`       | Redis port                   | `6379`                                                      |
-
-#### Environment Mode
-
-| Variable      | Values         | Description              |
-| ------------- | -------------- | ------------------------ |
-| `API_ENV`     | `dev` / `prod` | API environment mode     |
-| `REDUCER_ENV` | `dev` / `prod` | Reducer environment mode |
-
-In `prod` mode, Kafka credentials are required:
-
-- `KAFKA_API_KEY`
-- `KAFKA_API_SECRET`
-
-#### Reducer Backoff Settings
-
-| Variable                       | Default | Description              |
-| ------------------------------ | ------- | ------------------------ |
-| `REDUCER_BACKOFF_MAX_ATTEMPTS` | 3       | Max retries before crash |
-| `REDUCER_BACKOFF_BASE_SECONDS` | 1.0     | Initial backoff delay    |
-| `REDUCER_MAX_BACKOFF_SECONDS`  | 30.0    | Maximum backoff delay    |
-
-### Constants
-
-Defined in `src/shared/constants.py`:
-
-| Constant                                                                | Value              | Description                  |
-| ----------------------------------------------------------------------- | ------------------ | ---------------------------- |
-| `API_KAFKA_TOPIC` / `REDUCER_KAFKA_TOPIC`                               | `press_button`     | Kafka topic for press events |
-| `API_REDIS_STATE_UPDATE_CHANNEL` / `REDUCER_REDIS_STATE_UPDATE_CHANNEL` | `state_updates:v1` | Redis pub/sub channel        |
-| `REDUCER_KAFKA_GROUP_ID`                                                | `group.reducer`    | Consumer group ID            |
-| `REDUCER_KAFKA_CONSUMER_BATCH_SIZE`                                     | 100                | Max messages per poll        |
-
-## Running Locally
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- Python 3.13
-- [Poetry](https://python-poetry.org/docs/#installation)
-- Docker & Docker Compose
+- **Python 3.13**
+- **[Poetry](https://python-poetry.org/docs/#installation)** (Python package manager)
+- **Docker & Docker Compose**
+- **Make** (for convenience commands)
 
-### Quick Start
+### One-Command Setup
 
 The fastest way to get everything running:
 
 ```bash
-# 1. Install dependencies
-poetry install
+# Install dependencies and start infrastructure
+make setup
+make start-backend
 
-# 2. Set up environment file
-make setup-env
-
-# 3. Start infrastructure (PostgreSQL, Redis, Kafka)
-make start
-
-# 4. In separate terminals, start the services:
+# In separate terminals:
 make run-api      # Terminal 1: API server
 make run-reducer  # Terminal 2: Reducer service
+make start-frontend  # Terminal 3: Frontend server
 ```
 
-The API will be available at `http://localhost:8000`.
+Then open your browser to:
+- **Frontend**: http://localhost:3000
+- **API**: http://localhost:8000
+- **API Docs**: http://localhost:8000/docs
+
+### Docker Setup (Recommended)
+
+Run everything in Docker for a complete isolated environment:
+
+```bash
+# Start full stack (infrastructure + services)
+make start-full
+```
+
+This starts:
+- PostgreSQL, Redis, Kafka
+- API server (port 8000)
+- Reducer service
+- Nginx reverse proxy (port 8080)
+
+Access the application at:
+- **Nginx (with frontend)**: http://localhost:8080
+- **API directly**: http://localhost:8000
+- **Health check**: http://localhost:8000/health
 
 ### Detailed Setup
 
-#### 1. Start Infrastructure
+#### 1. Install Dependencies
 
 ```bash
-# Start PostgreSQL, Redis, and Kafka
-make start
-
+make setup
 # Or manually:
-docker compose up -d postgres redis kafka
-
-# Or start with admin UIs (Kafka UI, Redis Commander, pgAdmin)
-make docker-up-all
+cd backend && poetry install
 ```
 
-Verify services are healthy:
+#### 2. Configure Environment
 
 ```bash
-make docker-health
-```
-
-#### 2. Install Dependencies
-
-```bash
-# Configure Poetry to use in-project virtualenv (optional)
-poetry config virtualenvs.in-project true
-
-# Install all dependencies
-poetry install
-```
-
-#### 3. Configure Environment
-
-```bash
-# Create .env from example
-make setup-env
-
-# Or manually
+cd backend
 cp example.env .env
+# Edit .env if needed (defaults work for local development)
 ```
 
-Edit `.env` if needed (defaults should work for local development).
-
-#### 4. Run Database Migrations
+#### 3. Start Infrastructure
 
 ```bash
-# Run migrations (creates tables)
-poetry run alembic upgrade head
+make start-backend
+# This starts PostgreSQL, Redis, and Kafka
+# Runs database migrations automatically
 ```
 
-#### 5. Start the API
+#### 4. Start Services
+
+**Option A: Run locally (for development)**
 
 ```bash
-# Using Makefile
+# Terminal 1: API
 make run-api
 
-# Or manually
-poetry run uvicorn api.routes:app --reload --host 0.0.0.0 --port 8000
-```
-
-The API will be available at `http://localhost:8000`. You can verify it's running:
-
-```bash
-curl http://localhost:8000/health
-```
-
-#### 6. Start the Reducer
-
-In a separate terminal:
-
-```bash
-# Using Makefile
+# Terminal 2: Reducer
 make run-reducer
 
-# Or manually
-poetry run python -m reducer.main
+# Terminal 3: Frontend
+make start-frontend
 ```
 
-The reducer will connect to Kafka and begin consuming press events. You should see log messages indicating it's ready.
-
-### Running Everything in Docker
-
-Alternatively, you can run the entire stack in Docker:
+**Option B: Run in Docker (for production-like environment)**
 
 ```bash
-# Start everything (infrastructure + API + reducer)
 make start-full
-
-# View logs
-make logs-apps
-
-# Stop everything
-make stop
 ```
 
-### Verifying the Setup
+## 📁 Project Structure
 
-1. **Check API health**: `curl http://localhost:8000/health`
-2. **Check current state**: `curl http://localhost:8000/v1/states/current`
-3. **Test button press**: See [Testing the Streaming Endpoint](#testing-the-streaming-endpoint) below
+```
+TheButton/
+├── frontend/              # Frontend application
+│   ├── index.html        # Main HTML page
+│   ├── main.js           # Application logic
+│   ├── pow.js            # Proof-of-work solver
+│   └── styles.css        # Styling
+│
+├── backend/               # Backend application
+│   ├── src/
+│   │   ├── api/          # FastAPI application
+│   │   │   ├── routes.py      # API endpoints
+│   │   │   ├── config.py      # API settings
+│   │   │   ├── pow.py         # Proof-of-work verification
+│   │   │   ├── ratelimiter.py # Rate limiting
+│   │   │   └── ...
+│   │   │
+│   │   ├── reducer/      # Kafka consumer service
+│   │   │   ├── main.py        # Consumer loop
+│   │   │   ├── consumer.py    # Kafka consumer wrapper
+│   │   │   ├── updater.py     # State update logic
+│   │   │   ├── writer.py      # Database operations
+│   │   │   └── rules/         # Game rules engine
+│   │   │
+│   │   └── shared/       # Shared domain layer
+│   │       ├── models.py      # Domain entities & ORM
+│   │       ├── constants.py   # Constants
+│   │       └── kafka.py        # Kafka utilities
+│   │
+│   ├── tests/            # Test suite
+│   ├── docker-compose.yml
+│   ├── Dockerfile
+│   └── Makefile
+│
+└── Makefile              # Root Makefile (orchestrates everything)
+```
 
-## API Endpoints
+## 📡 API Endpoints
 
 ### Press the Button
 
 ```http
 POST /v1/events/press
+Content-Type: application/json
+
+{
+  "challenge_id": "...",
+  "difficulty": 4,
+  "expires_at": 1704067200000,
+  "signature": "...",
+  "nonce": "12345"
+}
 ```
 
 **Response** (202 Accepted):
-
 ```json
 {
   "request_id": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
@@ -312,9 +236,21 @@ POST /v1/events/press
 }
 ```
 
-**Errors**:
+### Get Proof-of-Work Challenge
 
-- `503 Service Unavailable`: Kafka unavailable or buffer full
+```http
+GET /v1/challenge
+```
+
+**Response** (200 OK):
+```json
+{
+  "challenge_id": "...",
+  "difficulty": 4,
+  "expires_at": 1704067200000,
+  "signature": "..."
+}
+```
 
 ### Get Current State
 
@@ -323,7 +259,6 @@ GET /v1/states/current
 ```
 
 **Response** (200 OK):
-
 ```json
 {
   "id": 42,
@@ -342,19 +277,17 @@ GET /v1/states/current
 
 ```http
 GET /v1/states/stream
+Accept: text/event-stream
 ```
 
-Returns a `text/event-stream` with real-time state updates:
-
+Returns real-time state updates via Server-Sent Events:
 ```
 event: state_update
-data: {"id": 43, "counter": 12346, ...}
+data: {"id": 43, "counter": 12346, "phase": 2, ...}
 
 event: state_update
-data: {"id": 44, "counter": 12347, ...}
+data: {"id": 44, "counter": 12347, "phase": 3, ...}
 ```
-
-See [Testing the Streaming Endpoint](#testing-the-streaming-endpoint) below for how to test this endpoint.
 
 ### Health Checks
 
@@ -364,172 +297,175 @@ See [Testing the Streaming Endpoint](#testing-the-streaming-endpoint) below for 
 | `GET /health/live`  | Kubernetes liveness  | Service running        |
 | `GET /health/ready` | Kubernetes readiness | Redis, Kafka           |
 
-## Testing
+## 🎮 Game Mechanics
 
-### Running Tests
+The button responds to collective user activity through a dynamic rules engine. Game rules are stored as JSON in the database and loaded by the reducer at startup.
+
+**Key Concepts:**
+- **Phases**: CALM (0) → WARM (1) → HOT (2) → CHAOS (3)
+- **Entropy**: Measures activity intensity (0.0 to 1.0)
+- **Cooldown**: Time between allowed presses (varies by phase)
+- **Reveal Window**: Time period when button is active
+
+The specific mechanics are intentionally undocumented—discovering how the button behaves is part of the game experience!
+
+## 🧪 Testing
+
+### Run All Tests
 
 ```bash
-# Run all tests
 make test
-
-# Run only unit tests (fast)
-make test-unit
-
-# Run integration tests (requires Docker)
-make test-integration
-
-# Run with coverage
-make test-coverage
-
-# Run specific test file
-make test-file FILE="tests/reducer/unit/test_logic.py"
-
-# Run tests matching pattern
-make test-match PATTERN="health"
 ```
 
-See `make help` for all available test targets.
-
-### E2E Tests
-
-End-to-end tests verify the complete flow from button press to state update. These tests require:
-
-1. **Docker services running** (PostgreSQL, Redis, Kafka)
-2. **API running** at `http://localhost:8000`
-
-#### Quick Start for E2E Tests
+### Test Categories
 
 ```bash
-# Option 1: Start infrastructure + API locally
-make start          # Start Docker services
-make run-api        # Start API locally (reads from .env)
+make test-unit          # Fast unit tests
+make test-integration   # Integration tests (requires Docker)
+make test-e2e          # End-to-end tests (requires full stack)
+make test-coverage     # Tests with coverage report
+```
 
-# Option 2: Start everything in Docker
-make start-full     # Start all services including API in Docker
+### E2E Test Setup
 
-# Then run e2e tests
+E2E tests require the full stack to be running:
+
+```bash
+# Option 1: Docker
+make start-full
+make test-e2e
+
+# Option 2: Local
+make start-backend
+make run-api  # In separate terminal
 make test-e2e
 ```
 
-**Note**: For e2e tests, it's recommended to set `RATE_LIMIT_BYPASS=true` in your `.env` file to avoid rate limiting issues during testing. This is already set in `example.env` by default.
+## 🛠️ Development
 
-#### E2E Test Categories
+### Available Make Commands
 
-- **Smoke Tests** (`test_smoke.py`): Quick health checks, only require Docker services
-
-  ```bash
-  make test-smoke
-  ```
-
-- **Button Flow Tests** (`test_button_flow.py`): Full flow tests, require API + Docker
-  ```bash
-  make test-e2e
-  ```
-
-If the API is not running, tests that require it will be **skipped** with a helpful message:
-
-```
-SKIPPED [1] tests/e2e/test_button_flow.py:72: API is not running at http://localhost:8000.
-To run these e2e tests, start the API first:
-  • Run locally: make start && make run-api
-  • Run in Docker: make start-full
-  • Or use: docker compose up -d api
-Then wait a few seconds for the API to be ready and run the tests again.
-```
-
-#### Troubleshooting E2E Tests
-
-- **Tests skipped?** Make sure the API is running: `curl http://localhost:8000/health/live`
-- **Database errors?** Run migrations: `make db-upgrade`
-- **Connection refused?** Check Docker services: `make status`
-
-### Testing the Streaming Endpoint
-
-The `/v1/states/stream` endpoint uses Server-Sent Events (SSE) and cannot be tested directly in Swagger. Here are three ways to test it:
-
-#### Option 1: Python Script (Recommended)
-
-A simple Python script is provided for command-line testing:
+Run `make help` to see all available commands:
 
 ```bash
-# Basic usage (defaults to http://localhost:8000)
-python test_stream.py
-
-# Custom URL
-python test_stream.py --url http://localhost:8000
-
-# Custom timeout
-python test_stream.py --timeout 120
+make help               # Show all commands
+make setup             # Install all dependencies
+make start             # Start backend + frontend locally
+make start-backend     # Start only backend infrastructure
+make start-frontend    # Start frontend dev server
+make start-full        # Start everything in Docker
+make stop              # Stop all services
+make status            # Show service status
+make logs              # View logs (use SERVICE=api to filter)
+make run-api           # Run API locally
+make run-reducer       # Run reducer locally
+make test              # Run all tests
+make clean             # Clean cache and build artifacts
 ```
 
-The script will connect to the stream and print state updates as they arrive in real-time.
-
-#### Option 2: HTML Test Page
-
-Open `test_stream.html` in your web browser. This provides a visual interface with:
-
-- Connection controls (connect/disconnect)
-- Real-time display of state updates
-- Formatted JSON output
-- Status indicators
-
-Simply open the file in your browser, enter the API URL (default: `http://localhost:8000`), and click "Connect".
-
-#### Option 3: curl Command
-
-For quick testing from the command line:
+### Backend-Specific Commands
 
 ```bash
-curl -N -H "Accept: text/event-stream" http://localhost:8000/v1/states/stream
+cd backend
+make help              # See backend-specific commands
+make db-upgrade        # Run database migrations
+make db-migrate        # Create new migration
+make format            # Format code with black
+make lint              # Run linter checks
 ```
 
-The `-N` flag disables buffering so you see events in real-time.
+### Environment Variables
 
-#### Testing the Full Flow
+Key environment variables (see `backend/example.env` for full list):
 
-To see state updates in the stream:
+| Variable           | Description                  | Default                    |
+| ------------------ | ---------------------------- | -------------------------- |
+| `DATABASE_URL`     | PostgreSQL connection string | `postgresql://...`         |
+| `KAFKA_BROKER_URL` | Kafka bootstrap servers      | `localhost:9092`            |
+| `REDIS_HOST`       | Redis hostname               | `localhost`                |
+| `REDIS_PORT`       | Redis port                   | `6379`                     |
+| `API_ENV`          | API environment (`dev`/`prod`) | `dev`                      |
+| `POW_BYPASS`       | Skip PoW verification (dev)    | `false`                    |
+| `RATE_LIMIT_BYPASS` | Skip rate limiting (dev)     | `false`                    |
 
-1. **Start the stream** using one of the methods above
-2. **Trigger state updates** by pressing the button (in another terminal):
+## 🐳 Docker Services
 
-   ```bash
-   # First, get a challenge
-   curl -X POST http://localhost:8000/v1/challenge
+| Service           | Port | Description                            |
+| ----------------- | ---- | -------------------------------------- |
+| `postgres`        | 5432 | PostgreSQL 16 database                 |
+| `redis`           | 6379 | Redis 7 for pub/sub                    |
+| `kafka`           | 9092 | Kafka (KRaft mode, no ZooKeeper)       |
+| `api`             | 8000 | FastAPI application                     |
+| `reducer`        | -    | Kafka consumer service                  |
+| `nginx`           | 8080 | Reverse proxy (optional)                 |
+| `kafka-ui`        | 8080 | Kafka UI (optional, `--profile tools`) |
+| `redis-commander` | 8081 | Redis Commander (optional)             |
+| `pgadmin`         | 8082 | pgAdmin (optional)                     |
 
-   # Then press the button (requires solving PoW or set POW_BYPASS=true in .env)
-   curl -X POST http://localhost:8000/v1/events/press \
-     -H "Content-Type: application/json" \
-     -d '{
-       "challenge_id": "...",
-       "difficulty": 4,
-       "expires_at": ...,
-       "signature": "...",
-       "nonce": "..."
-     }'
-   ```
+### Start with Admin UIs
 
-3. **Watch the stream** receive state updates as the reducer processes button presses
+```bash
+cd backend
+docker compose --profile tools up -d
+```
 
-> **Note**: For development/testing, you can set `POW_BYPASS=true` in your `.env` file to skip proof-of-work verification.
+## 📊 Monitoring & Debugging
 
-## Design Notes
+### View Logs
+
+```bash
+make logs                    # All services
+make logs SERVICE=api        # Specific service
+cd backend && make logs      # Backend services
+```
+
+### Check Service Status
+
+```bash
+make status
+```
+
+### Health Checks
+
+```bash
+curl http://localhost:8000/health
+curl http://localhost:8000/health/live
+curl http://localhost:8000/health/ready
+```
+
+## 🔧 Configuration
+
+### Database Migrations
+
+```bash
+cd backend
+make db-upgrade      # Apply migrations
+make db-migrate      # Create new migration (use MSG="description")
+make db-downgrade    # Rollback last migration
+```
+
+### Seed Rules
+
+```bash
+cd backend
+make db-seed-rules   # Load initial rules from config/rules.json
+```
+
+## 🎯 Design Highlights
 
 ### Manual Kafka Offset Management
 
-The reducer uses `enable.auto.commit = False` and commits offsets only after successful database writes:
+Offsets are committed only after successful database writes, ensuring no message loss:
 
 ```python
-# In reducer main loop
 new_state = apply_batch(state, events, rules_config, rules_hash)
 persisted_global_state = write_state(new_state)  # DB write first
 consumer.commit(asynchronous=False)              # Then commit offsets
 ```
 
-This ensures no message is "lost" if the reducer crashes after consuming but before persisting.
-
 ### Pure Domain Core
 
-The rules engine (`reducer/rules/logic.py`) and state updater (`reducer/updater.py`) are pure Python functions with no framework dependencies:
+Game logic is framework-agnostic and easily testable:
 
 ```python
 def apply_event(
@@ -541,11 +477,9 @@ def apply_event(
     # Pure logic: no I/O, no side effects
 ```
 
-This makes the core game logic easy to test in isolation and reason about.
+### Redis as Notification Layer
 
-### Redis as Invalidation Layer
-
-Redis pub/sub is treated as best-effort notification:
+Redis pub/sub is best-effort; PostgreSQL is always the source of truth:
 
 ```python
 try:
@@ -554,60 +488,27 @@ except:
     logger.warning("Redis publish failed — continuing without blocking reducer")
 ```
 
-Clients always read the latest state from PostgreSQL. Redis just tells them _when_ to fetch.
+## 🚧 Future Enhancements
 
-### Error Handling & Backoff
-
-The reducer implements exponential backoff with a crash-after-max-attempts pattern:
-
-```python
-if backoff_attempt >= settings.backoff_max_attempts:
-    logger.critical("Reducer reached max attempts — crashing")
-    raise  # Let orchestration restart the container
-
-delay = min(max_backoff, base_seconds * (2 ** backoff_attempt))
-time.sleep(delay)
-```
-
-## Docker Services
-
-| Service           | Port | Description                            |
-| ----------------- | ---- | -------------------------------------- |
-| `postgres`        | 5432 | PostgreSQL 16 database                 |
-| `redis`           | 6379 | Redis 7 for pub/sub                    |
-| `kafka`           | 9092 | Kafka (KRaft mode, no ZooKeeper)       |
-| `kafka-ui`        | 8080 | Kafka UI (optional, `--profile tools`) |
-| `redis-commander` | 8081 | Redis Commander (optional)             |
-| `pgadmin`         | 8082 | pgAdmin (optional)                     |
-
-```bash
-# Start core services
-docker compose up -d postgres redis kafka
-
-# Start with admin UIs
-docker compose --profile tools up -d
-
-# View logs
-docker compose logs -f kafka
-
-# Stop all
-docker compose --profile tools down
-
-# Clean up (remove volumes)
-docker compose --profile tools down -v
-```
-
-## Future Enhancements
-
-- [ ] Alembic migrations for database schema management
-- [ ] Dead Letter Queue (DLQ) for poison messages
-- [ ] Multi-partition Kafka scaling for higher throughput
-- [ ] Rate limiting on the API layer
-- [ ] Metrics and observability (Prometheus, Grafana)
 - [ ] WebSocket support as alternative to SSE
-- [ ] Frontend client for the button game
-- [ ] Richer rulesets with time-based events and special conditions
+- [ ] Multi-partition Kafka scaling for higher throughput
+- [ ] Dead Letter Queue (DLQ) for poison messages
+- [ ] Metrics and observability (Prometheus, Grafana)
+- [ ] Richer rulesets with time-based events
+- [ ] User authentication and leaderboards
+- [ ] Mobile app support
 
-## License
+## 📝 License
 
 MIT
+
+## 🤝 Contributing
+
+This is a personal project for learning and experimentation. Feel free to fork and adapt for your own use!
+
+---
+
+**Enjoy pressing the button!** 🎮
+
+
+

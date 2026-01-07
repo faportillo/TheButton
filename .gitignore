@@ -1,52 +1,54 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*.so
-
-# Virtual environments
-.venv/
-venv/
-ENV/
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Poetry
-poetry.toml
-
-# Unit test / coverage reports
-.coverage
-.coverage.*
-.pytest_cache/
-htmlcov/
-
-# PyInstaller
-*.manifest
-*.spec
-
-# Environments
-.env
-.env.*
-.python-version
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
 
 # IDE / Editor
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+.vscode-test/
 
+# Temporary files
+*.tmp
+*.temp
+*.bak
+.tmp/
+temp/
+
+# Logs
+*.log
+logs/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Docker
+docker-compose.override.yml
+
+# Database dumps
+*.sql
+*.dump
+*.backup
+
+# Test files
+.coverage
+.pytest_cache/
+htmlcov/
 
