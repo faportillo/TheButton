@@ -1,6 +1,5 @@
-from shared.models import GlobalStateEntity, PressEvent
+from shared.models import GlobalStateEntity, PressEvent, Phases
 from reducer.updater import apply_event
-from reducer.rules.logic import Phases
 
 
 def _state(

@@ -4,11 +4,13 @@
 # Build targets:
 #   - api: FastAPI application server
 #   - reducer: Kafka consumer/state reducer
+#   - watcher: Periodic phase transition watcher
 #   - nginx: Nginx reverse proxy
 #
 # Usage:
 #   docker build --target api -t thebutton-api .
 #   docker build --target reducer -t thebutton-reducer .
+#   docker build --target watcher -t thebutton-watcher .
 #   docker build --target nginx -t thebutton-nginx .
 # =============================================================================
 
@@ -107,6 +109,27 @@ USER appuser
 
 # Run reducer main (uses .venv python via PATH)
 CMD ["python", "-m", "reducer.main"]
+
+# -----------------------------------------------------------------------------
+# Watcher stage: Periodic phase transition checker
+# -----------------------------------------------------------------------------
+FROM dependencies AS watcher
+
+# Copy Alembic configuration (watcher may also need it for migrations)
+COPY alembic.ini ./
+
+# Copy source code
+COPY src/ ./src/
+
+# Create non-root user for security
+RUN groupadd --gid 1000 appgroup \
+    && useradd --uid 1000 --gid appgroup --shell /bin/bash appuser \
+    && chown -R appuser:appgroup /app
+
+USER appuser
+
+# Run watcher main (uses .venv python via PATH)
+CMD ["python", "-m", "watcher.main"]
 
 # -----------------------------------------------------------------------------
 # Nginx stage: Reverse proxy

@@ -21,6 +21,7 @@ def _orm_to_dict(orm_obj: GlobalState) -> dict[str, Any]:
         "entropy": orm_obj.entropy,
         "reveal_until_ms": orm_obj.reveal_until_ms,
         "cooldown_ms": orm_obj.cooldown_ms,
+        "ruleshash": orm_obj.ruleshash,
         "created_at": orm_obj.created_at.isoformat() if orm_obj.created_at else None,
     }
 

@@ -31,6 +31,9 @@ class WatcherSettings(BaseSettings):
     redis_password: str | None = Field(None, alias="REDIS_PASSWORD")
     redis_url: str | None = Field(None, alias="REDIS_URL")
 
+    # Watcher settings
+    watcher_interval_seconds: int = Field(30, alias="WATCHER_INTERVAL_SECONDS")
+
     @model_validator(mode="after")
     def validate_prod_credentials(self) -> "WatcherSettings":
         """Fail fast if prod is missing required credentials."""

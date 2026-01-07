@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import insert, select
 from shared.models import Ruleset
-import reducer.rules.retriever as retriever
+import shared.rules as retriever
 
 
 def test_get_latest_rules_returns_latest_ruleset(patch_retriever_db):

@@ -5,10 +5,19 @@ from sqlalchemy.sql import func
 import datetime
 from dataclasses import dataclass
 from typing import Optional
+from enum import Enum
 
 # ==================================================
 # DOMAIN ENTITIES
 # ==================================================
+
+
+class Phases(Enum):
+    """Game phases based on entropy levels."""
+    CALM = 0
+    WARM = 1
+    HOT = 2
+    CHAOS = 3
 
 
 @dataclass(frozen=True)

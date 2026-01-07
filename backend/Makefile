@@ -5,7 +5,7 @@
 # =============================================================================
 
 .PHONY: help start start-full stop restart status logs test test-unit test-integration \
-        test-e2e test-coverage install dev-install run-api run-reducer format lint clean \
+        test-e2e test-coverage install dev-install run-api run-reducer run-watcher format lint clean \
         db-upgrade db-migrate load-test
 
 # Default Python and Poetry commands
@@ -29,7 +29,7 @@ start: ## Start infrastructure (Docker) + run migrations
 	@echo "Run 'make run-api' and 'make run-reducer' to start apps locally,"
 	@echo "or 'make start-full' to run everything in Docker."
 
-start-full: ## Start everything in Docker (infra + api + reducer + nginx)
+start-full: ## Start everything in Docker (infra + api + reducer + watcher + nginx)
 	@echo "Starting TheButton (full stack)..."
 	@docker compose up -d --build
 	@echo "Waiting for infrastructure to be healthy..."
@@ -107,6 +107,9 @@ run-api: ## Run API locally (requires 'make start' first)
 
 run-reducer: ## Run reducer locally (requires 'make start' first)
 	$(PYTHON) -m reducer.main
+
+run-watcher: ## Run watcher locally (requires 'make start' first)
+	PYTHONPATH=src $(PYTHON) -m watcher.main
 
 format: ## Format code with black
 	$(BLACK) src tests

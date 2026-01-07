@@ -207,6 +207,31 @@ services:
         condition: service_healthy
 
   # ===========================================================================
+  # TheButton Watcher (Periodic Phase Transition Checker)
+  # ===========================================================================
+  watcher:
+    build:
+      context: .
+      target: watcher
+    container_name: thebutton-watcher
+    restart: unless-stopped
+    environment:
+      WATCHER_ENV: ${WATCHER_ENV:-dev}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-thebutton}:${POSTGRES_PASSWORD:-thebutton}@postgres:5432/${POSTGRES_DB:-thebutton}
+      KAFKA_BROKER_URL: kafka:29092
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      WATCHER_INTERVAL_SECONDS: ${WATCHER_INTERVAL_SECONDS:-30}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  # ===========================================================================
   # Kafka UI (Optional - for debugging/monitoring)
   # ===========================================================================
   kafka-ui:

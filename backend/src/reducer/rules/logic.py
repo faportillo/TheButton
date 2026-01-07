@@ -1,13 +1,5 @@
 from typing import Optional
-from shared.models import RulesConfig
-from enum import Enum
-
-
-class Phases(Enum):
-    CALM = 0
-    WARM = 1
-    HOT = 2
-    CHAOS = 3
+from shared.models import RulesConfig, Phases
 
 
 def update_entropy(

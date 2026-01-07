@@ -4,7 +4,7 @@ from reducer.notify import create_redis_connection, publish_state_update
 from reducer.writer import write_state, get_latest_state, get_initial_state
 from reducer.updater import apply_batch
 from shared.models import PressEvent
-from reducer.rules.retriever import get_latest_rules
+from shared.rules import get_latest_rules
 import json
 import logging
 import time

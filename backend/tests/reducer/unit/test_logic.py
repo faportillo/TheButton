@@ -1,10 +1,10 @@
 import math
+from shared.models import Phases
 from reducer.rules.logic import (
     update_entropy,
     transition_phase,
     compute_cooldown_ms,
     compute_reveal_until_ms,
-    Phases,
 )
 
 

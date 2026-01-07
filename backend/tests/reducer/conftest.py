@@ -16,7 +16,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from shared.models import Base
 import reducer.writer as writer
-import reducer.rules.retriever as retriever
+import shared.rules as retriever
 
 
 @pytest.fixture
