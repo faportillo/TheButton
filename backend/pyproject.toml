@@ -33,3 +33,10 @@ dev = [
     "testcontainers (>=4.13.3,<5.0.0)",
     "httpx (>=0.28.1,<0.29.0)"
 ]
+
+[tool.pyright]
+include = ["src", "tests"]
+extraPaths = ["src"]
+executionEnvironments = [
+    { root = ".", pythonVersion = "3.13", extraPaths = ["src"] }
+]

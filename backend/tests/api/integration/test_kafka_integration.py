@@ -11,11 +11,12 @@ Requirements:
 - First run will pull the Kafka image (~800MB)
 """
 
-import pytest
 import json
 import time
-from confluent_kafka import Producer, Consumer, KafkaError
+
+from confluent_kafka import Consumer, Producer
 from confluent_kafka.admin import AdminClient, NewTopic
+import pytest
 import shared.constants as constants
 
 # Try to import testcontainers, skip tests if not available or Docker not running

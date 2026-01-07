@@ -7,14 +7,16 @@ These tests spin up a real Redis instance to verify:
 - Serialization/deserialization
 """
 
-import pytest
-import json
 import asyncio
+import json
 import time
-from testcontainers.redis import RedisContainer
+
+import pytest
 import redis as redis_lib
-from shared.models import PersistedGlobalState
+from testcontainers.redis import RedisContainer
+
 from shared.constants import API_REDIS_STATE_UPDATE_CHANNEL
+from shared.models import PersistedGlobalState
 
 
 @pytest.fixture(scope="module")
